@@ -29,6 +29,27 @@ func main() {
 }
 ```
 
+The expected output would be:
+
+```
+package openstack.policy
+
+import input.credentials as credentials
+import input.action_name as action_name
+import input.target as target
+
+default allow = false
+
+admin {
+    credentials.roles[_] = "admin"
+}
+
+allow {
+    action_name = "secrets:get"
+    admin
+}
+```
+
 Dependencies
 ------------
 
