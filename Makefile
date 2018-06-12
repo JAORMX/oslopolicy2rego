@@ -38,7 +38,7 @@ install: generate
 	$(GO) install
 
 test: generate
-	$(GO) test $(PACKAGES)
+	$(GO) test $(PACKAGES) -count 10
 
 fmt:
 	$(GO) fmt $(PACKAGES)
