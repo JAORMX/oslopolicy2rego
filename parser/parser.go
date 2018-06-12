@@ -134,17 +134,13 @@ func (o *parsedRego) parseRules(rules map[string]string) error {
 	var rulesList []string
 
 	for key, value := range rules {
-		//fmt.Printf("parseRules: incoming key %s, value %s\n", key, value)
 		if strings.Contains(key, ":") {
-			//fmt.Println("parseRules: Parsing action")
 			action := o.renderAction(key, value)
 			rulesList = append(rulesList, action)
 		} else {
-			//fmt.Println("parseRules: Parsing alias")
 			alias := o.renderAlias(key, value)
 			rulesList = append(rulesList, alias)
 		}
-		//fmt.Printf("parseRules: rendered rules %v\n", rulesList)
 	}
 
 	o.Rules = regoRules{rulesList}
