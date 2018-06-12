@@ -36,11 +36,11 @@ default allow = false
 {{.Rules}}`
 
 const actionTemplate = `allow {
-    action_name = "{{.ActionName}}"
+    action_name = "{{.Name}}"
     {{.Rules}}
 }`
 
-const aliasTemplate = `{{.AliasName}} {
+const aliasTemplate = `{{.Name}} {
     {{.Rules}}
 }`
 
@@ -110,7 +110,7 @@ func (o parsedRego) renderRules(value interface{}) ([]string, error) {
 	return outputRules, nil
 }
 
-func (o parsedRego) renderAction(key string, value interface{}) (string, error) {
+func (o parsedRego) renderEntry(entryType, key string, value interface{}) (string, error) {
 	rules, err := o.renderRules(value)
 	if err != nil {
 		return "", err
@@ -118,34 +118,14 @@ func (o parsedRego) renderAction(key string, value interface{}) (string, error) 
 
 	var output string
 	for _, rule := range rules {
-		action := struct {
-			ActionName string
-			Rules      string
+		entry := struct {
+			Name  string
+			Rules string
 		}{
 			key,
 			rule,
 		}
-		output = output + "\n" + o.renderTemplate("Action", action)
-	}
-	return output, nil
-}
-
-func (o parsedRego) renderAlias(key string, value interface{}) (string, error) {
-	rules, err := o.renderRules(value)
-	if err != nil {
-		return "", err
-	}
-
-	var output string
-	for _, actionRule := range rules {
-		alias := struct {
-			AliasName string
-			Rules     string
-		}{
-			key,
-			actionRule,
-		}
-		output = output + "\n" + o.renderTemplate("Alias", alias)
+		output = output + "\n" + o.renderTemplate(entryType, entry)
 	}
 	return output, nil
 }
@@ -156,21 +136,19 @@ func (o *parsedRego) parseRules(rules map[string]interface{}) error {
 	var rulesList []string
 
 	for key, value := range rules {
+		entryType := ""
 		if strings.Contains(key, ":") {
-			action, err := o.renderAction(key, value)
-			if err != nil {
-				return err
-			}
-
-			rulesList = append(rulesList, action)
+			entryType = "Action"
 		} else {
-			alias, err := o.renderAlias(key, value)
-			if err != nil {
-				return err
-			}
-
-			rulesList = append(rulesList, alias)
+			entryType = "Alias"
 		}
+
+		alias, err := o.renderEntry(entryType, key, value)
+		if err != nil {
+			return err
+		}
+
+		rulesList = append(rulesList, alias)
 	}
 
 	o.Rules = regoRules{rulesList}
