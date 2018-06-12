@@ -1,7 +1,6 @@
 package oslopolicy2rego
 
 import (
-	"reflect"
 	"strings"
 	"testing"
 )
@@ -13,18 +12,22 @@ func TestParseYamlOrJSONParsesSimpleYamlCases(t *testing.T) {
 ---
 a: 1
 b: 2`
-	test1map := map[string]string{"a": "1", "b": "2"}
+	test1map := map[string]interface{}{"a": 1, "b": 2}
 	cases := []struct {
 		input string
-		want  map[string]string
+		want  map[string]interface{}
 	}{
 		{test1yaml, test1map},
-		{"", map[string]string{}},
+		{"", map[string]interface{}{}},
 	}
 	for _, c := range cases {
 		got, _ := parseYamlOrJSON(c.input)
-		if !reflect.DeepEqual(got, c.want) {
-			t.Errorf("parseYamlOrJSON() with input:\n %s\n didn't match %v. Got %v", c.input, c.want, got)
+		for wantedKey, wantedValue := range c.want {
+			gottenValue, ok := got[wantedKey]
+			if !ok || gottenValue != wantedValue {
+				t.Errorf("parseYamlOrJSON() with input:\n %s\n entry {%v -> %v} didn't match {%v -> %v}",
+					c.input, wantedKey, wantedValue, wantedKey, gottenValue)
+			}
 		}
 	}
 }
@@ -61,16 +64,20 @@ func TestParseYamlOrJSONParsesSimpleJSONCases(t *testing.T) {
 	"b": 2,
 	"c": null
 }`
-	want := map[string]string{"a": "1", "b": "2", "c": ""}
+	want := map[string]interface{}{"a": "1", "b": 2, "c": nil}
 	got, _ := parseYamlOrJSON(input)
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("parseYamlOrJSON() with input:\n %s\n didn't match %v. Got %v", input, want, got)
+	for wantedKey, wantedValue := range want {
+		gottenValue, ok := got[wantedKey]
+		if !ok || gottenValue != wantedValue {
+			t.Errorf("parseYamlOrJSON() with input:\n %s\n entry {%v -> %v} didn't match {%v -> %v}",
+				input, wantedKey, wantedValue, wantedKey, gottenValue)
+		}
 	}
 }
 
 // OsloPolicy2Rego tests
 
-func TestOsloPolicy2Rego(t *testing.T) {
+func TestOsloPolicy2RegoSuccesses(t *testing.T) {
 	regoPolicyHeader := `
 package openstack.policy
 
@@ -105,10 +112,20 @@ default allow = false`
 {
 	"secrets:get": ""
 }`
-	alwaysTrueWithEmptyStringOutput := []string{`allow {
+	alwaysTrue := []string{`allow {
     action_name = "secrets:get"
     true
 }`}
+
+	alwaysTrueWithEmptyListInput := `
+{
+	"secrets:get": []
+}`
+
+	alwaysTrueWithAtSignInput := `
+{
+	"secrets:get": "@"
+}`
 
 	cases := []struct {
 		description string
@@ -117,7 +134,9 @@ default allow = false`
 	}{
 		{"One rule and one action should work", oneRuleOneActionInput, oneRuleOneActionOutput},
 		{"Action should always be false", alwaysFalseInput, alwaysFalseOutput},
-		{"Action should always be true given an empty string", alwaysTrueWithEmptyStringInput, alwaysTrueWithEmptyStringOutput},
+		{"Action should always be true given an empty string", alwaysTrueWithEmptyStringInput, alwaysTrue},
+		{"Action should always be true given an empty list", alwaysTrueWithEmptyListInput, alwaysTrue},
+		{"Action should always be true given an @ sign", alwaysTrueWithAtSignInput, alwaysTrue},
 	}
 	for _, c := range cases {
 		got, _ := OsloPolicy2Rego(c.input)
@@ -130,6 +149,46 @@ default allow = false`
 				t.Errorf("OsloPolicy2Rego() test case \"%s\" with input:\n %s\n\nDidn't contain:\n%s\nGot:\n%s",
 					c.description, c.input, c.want, got)
 			}
+		}
+	}
+}
+
+func TestOsloPolicy2RegoErrors(t *testing.T) {
+	wrongInput := `
+{
+	"admin": "role:admin",
+	"secrets:get": "rule:admin"
+`
+	listWithItems := `
+{
+	"secrets:get": [1, 2, 3]
+}`
+
+	numericValue := `
+{
+	"secrets:get": 1
+}`
+
+	nestedMap := `
+{
+	"secrets:get": {
+		"this map": "shouldn't work"
+	}
+}`
+
+	cases := []struct {
+		description string
+		input       string
+	}{
+		{"Invalidly formatted input should fail", wrongInput},
+		{"List with items should fail", listWithItems},
+		{"Numeric value should fail", numericValue},
+		{"Nested map should fail", nestedMap},
+	}
+	for _, c := range cases {
+		got, err := OsloPolicy2Rego(c.input)
+		if err == nil {
+			t.Errorf("parseYamlOrJSON() should have returned an error for:\n %s\n Instead got: %v", c.input, got)
 		}
 	}
 }

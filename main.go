@@ -9,10 +9,12 @@ import (
 func main() {
 	sampleInput := `
 {
-	"admin": "role:admin",
-	"secrets:get": "rule:admin"
+	"secrets:get": []
 }
 `
-	output, _ := o2r.OsloPolicy2Rego(sampleInput)
+	output, err := o2r.OsloPolicy2Rego(sampleInput)
+	if err != nil {
+		panic(err)
+	}
 	fmt.Println(output)
 }
