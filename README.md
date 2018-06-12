@@ -34,6 +34,33 @@ Dependencies
 
 - **gopkg.in/yaml.v2**: https://gopkg.in/yaml.v2
 
+What works
+----------
+
+Currently what's here is a very minimal subset of oslo.policy that's accepted.
+
+Only one entry is accepted (no and:s and or:s yet).
+
+It accepts true values (empty lists, empty string and "@"), and always negative
+values ("!").
+
+It reads a role ("role:admin") and also rule references ("rule:admin")
+
+TODO
+----
+
+* "not" statements
+
+* Comparison with constant value
+
+* Comparison with credentials (project_id, user_id, is_admin)
+
+* Comparison with target
+
+* "and" and "or" expressions
+
+* parentheses
+
 [1] https://docs.openstack.org/oslo.policy/latest/index.html
 
 [2] https://www.openpolicyagent.org/docs/how-do-i-write-policies.html
