@@ -136,6 +136,9 @@ func (o parsedRego) renderRules(value interface{}) ([]string, error) {
 			outputRules = append(outputRules, "false")
 		} else if typedValue == "" || typedValue == "@" {
 			outputRules = append(outputRules, "true")
+		} else {
+			errorMessage := fmt.Sprintf("The value %v is invalid", typedValue)
+			return nil, errors.New(errorMessage)
 		}
 	case []interface{}:
 		if len(typedValue) == 0 {
