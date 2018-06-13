@@ -243,7 +243,7 @@ func TestOsloPolicy2RegoErrors(t *testing.T) {
 	for _, c := range cases {
 		got, err := OsloPolicy2Rego(c.input)
 		if err == nil {
-			t.Errorf("parseYamlOrJSON() should have returned an error for:\n %s\n Instead got: %v", c.input, got)
+			t.Errorf("OsloPolicy2Rego() should have returned an error for:\n %s\n Instead got: %v", c.input, got)
 		}
 	}
 }
