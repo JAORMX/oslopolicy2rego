@@ -60,12 +60,12 @@ What works
 
 Currently what's here is a very minimal subset of oslo.policy that's accepted.
 
-Only one entry is accepted (no and:s and or:s yet).
-
 It accepts true values (empty lists, empty string and "@"), and always negative
 values ("!").
 
 It reads a role ("role:admin") and also rule references ("rule:admin")
+
+"and" expressions are accepted, but not "or"s yet.
 
 TODO
 ----
@@ -78,7 +78,7 @@ TODO
 
 * Comparison with target
 
-* "and" and "or" expressions
+* "or" expressions
 
 * parentheses
 

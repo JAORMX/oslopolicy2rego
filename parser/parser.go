@@ -83,11 +83,31 @@ func (o parsedRego) String() string {
 	return o.renderTemplate("OpenStackRegoBase", o)
 }
 
+func (o parsedRego) renderMultipleAssertionsWithAnd(value string) (string, error) {
+	var outputRules []string
+	unparsedRules := strings.Split(value, " and ")
+	for _, unparsedRule := range unparsedRules {
+		parsedRule, err := o.renderRules(unparsedRule)
+		if err != nil {
+			return "", err
+		}
+
+		outputRules = append(outputRules, parsedRule[0])
+	}
+	return strings.Join(outputRules, "\n    "), nil
+}
+
 func (o parsedRego) renderRules(value interface{}) ([]string, error) {
 	var outputRules []string
 	switch typedValue := value.(type) {
 	case string:
-		if strings.HasPrefix(typedValue, "rule:") {
+		if strings.Contains(typedValue, " and ") {
+			assertions, err := o.renderMultipleAssertionsWithAnd(typedValue)
+			if err != nil {
+				return nil, err
+			}
+			outputRules = append(outputRules, assertions)
+		} else if strings.HasPrefix(typedValue, "rule:") {
 			outputRules = append(outputRules, typedValue[5:])
 		} else if strings.HasPrefix(typedValue, "role:") {
 			roleAssertion := "credentials.roles[_] = \"" + typedValue[5:] + "\""

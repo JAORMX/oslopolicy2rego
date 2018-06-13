@@ -127,6 +127,19 @@ default allow = false`
 	"secrets:get": "@"
 }`
 
+	multipleAssertionsWithAndInput := `
+{
+	"secrets:get": "rule:admin and rule:creator and rule:reader"
+}
+`
+
+	multipleAssertionsWithAndOutput := []string{`allow {
+    action_name = "secrets:get"
+    admin
+    creator
+    reader
+}`}
+
 	cases := []struct {
 		description string
 		input       string
@@ -137,6 +150,7 @@ default allow = false`
 		{"Action should always be true given an empty string", alwaysTrueWithEmptyStringInput, alwaysTrue},
 		{"Action should always be true given an empty list", alwaysTrueWithEmptyListInput, alwaysTrue},
 		{"Action should always be true given an @ sign", alwaysTrueWithAtSignInput, alwaysTrue},
+		{"Should add multiple assertions with the 'and' keyword", multipleAssertionsWithAndInput, multipleAssertionsWithAndOutput},
 	}
 	for _, c := range cases {
 		got, _ := OsloPolicy2Rego(c.input)
