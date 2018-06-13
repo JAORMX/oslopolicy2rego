@@ -108,6 +108,16 @@ default allow = false`
     false
 }`}
 
+	notStatementInput := `
+{
+	"secrets:get": "not rule:admin"
+}
+`
+	notStatementOutput := []string{`allow {
+    action_name = "secrets:get"
+    not admin
+}`}
+
 	alwaysTrueWithEmptyStringInput := `
 {
 	"secrets:get": ""
@@ -129,7 +139,7 @@ default allow = false`
 
 	multipleAssertionsWithAndInput := `
 {
-	"secrets:get": "rule:admin and rule:creator and rule:reader"
+	"secrets:get": "rule:admin and rule:creator and rule:reader and not rule:audit"
 }
 `
 
@@ -138,6 +148,7 @@ default allow = false`
     admin
     creator
     reader
+    not audit
 }`}
 
 	multipleRulesWithOrInput := `
@@ -164,6 +175,7 @@ default allow = false`
 	}{
 		{"One rule and one action should work", oneRuleOneActionInput, oneRuleOneActionOutput},
 		{"Action should always be false", alwaysFalseInput, alwaysFalseOutput},
+		{"Parse 'not' statement correctly", notStatementInput, notStatementOutput},
 		{"Action should always be true given an empty string", alwaysTrueWithEmptyStringInput, alwaysTrue},
 		{"Action should always be true given an empty list", alwaysTrueWithEmptyListInput, alwaysTrue},
 		{"Action should always be true given an @ sign", alwaysTrueWithAtSignInput, alwaysTrue},

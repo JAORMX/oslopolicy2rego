@@ -83,6 +83,18 @@ func (o parsedRego) String() string {
 	return o.renderTemplate("OpenStackRegoBase", o)
 }
 
+func (o parsedRego) renderNotStatements(value string) ([]string, error) {
+	rules, err := o.renderRules(value)
+	if err != nil {
+		return nil, err
+	}
+	modifiedRules := rules[:0]
+	for _, rule := range rules {
+		modifiedRules = append(modifiedRules, "not "+rule)
+	}
+	return modifiedRules, nil
+}
+
 func (o parsedRego) renderMultipleAssertionsWithAnd(value string) (string, error) {
 	var outputRules []string
 	unparsedRules := strings.Split(value, " and ")
@@ -123,6 +135,12 @@ func (o parsedRego) renderRules(value interface{}) ([]string, error) {
 			outputRules = append(outputRules, assertions)
 		} else if strings.Contains(typedValue, " or ") {
 			rules, err := o.renderMultipleRulesWithOr(typedValue)
+			if err != nil {
+				return nil, err
+			}
+			outputRules = append(outputRules, rules...)
+		} else if strings.HasPrefix(typedValue, "not ") {
+			rules, err := o.renderNotStatements(typedValue[4:])
 			if err != nil {
 				return nil, err
 			}
