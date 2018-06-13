@@ -220,6 +220,10 @@ func TestOsloPolicy2RegoErrors(t *testing.T) {
 	}
 }`
 
+	invalidValueShouldFail := `
+{
+	"secrets:get": "aljksdfklasdf"
+}`
 	cases := []struct {
 		description string
 		input       string
@@ -228,6 +232,7 @@ func TestOsloPolicy2RegoErrors(t *testing.T) {
 		{"List with items should fail", listWithItems},
 		{"Numeric value should fail", numericValue},
 		{"Nested map should fail", nestedMap},
+		{"invalid value should fail", invalidValueShouldFail},
 	}
 	for _, c := range cases {
 		got, err := OsloPolicy2Rego(c.input)
