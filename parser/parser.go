@@ -92,9 +92,23 @@ func (o parsedRego) renderMultipleAssertionsWithAnd(value string) (string, error
 			return "", err
 		}
 
-		outputRules = append(outputRules, parsedRule[0])
+		outputRules = append(outputRules, parsedRule...)
 	}
 	return strings.Join(outputRules, "\n    "), nil
+}
+
+func (o parsedRego) renderMultipleRulesWithOr(value string) ([]string, error) {
+	var outputRules []string
+	unparsedRules := strings.Split(value, " or ")
+	for _, unparsedRule := range unparsedRules {
+		parsedRule, err := o.renderRules(unparsedRule)
+		if err != nil {
+			return nil, err
+		}
+
+		outputRules = append(outputRules, parsedRule...)
+	}
+	return outputRules, nil
 }
 
 func (o parsedRego) renderRules(value interface{}) ([]string, error) {
@@ -107,6 +121,12 @@ func (o parsedRego) renderRules(value interface{}) ([]string, error) {
 				return nil, err
 			}
 			outputRules = append(outputRules, assertions)
+		} else if strings.Contains(typedValue, " or ") {
+			rules, err := o.renderMultipleRulesWithOr(typedValue)
+			if err != nil {
+				return nil, err
+			}
+			outputRules = append(outputRules, rules...)
 		} else if strings.HasPrefix(typedValue, "rule:") {
 			outputRules = append(outputRules, typedValue[5:])
 		} else if strings.HasPrefix(typedValue, "role:") {

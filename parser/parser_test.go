@@ -140,6 +140,23 @@ default allow = false`
     reader
 }`}
 
+	multipleRulesWithOrInput := `
+{
+	"secrets:get": "rule:admin or rule:creator or rule:reader"
+}
+`
+
+	multipleRulesWithOrOutput := []string{`allow {
+    action_name = "secrets:get"
+    admin
+}`, `allow {
+    action_name = "secrets:get"
+    creator
+}`, `allow {
+    action_name = "secrets:get"
+    reader
+}`}
+
 	cases := []struct {
 		description string
 		input       string
@@ -151,6 +168,7 @@ default allow = false`
 		{"Action should always be true given an empty list", alwaysTrueWithEmptyListInput, alwaysTrue},
 		{"Action should always be true given an @ sign", alwaysTrueWithAtSignInput, alwaysTrue},
 		{"Should add multiple assertions with the 'and' keyword", multipleAssertionsWithAndInput, multipleAssertionsWithAndOutput},
+		{"Should add multiple rules with the 'or' keyword", multipleRulesWithOrInput, multipleRulesWithOrOutput},
 	}
 	for _, c := range cases {
 		got, _ := OsloPolicy2Rego(c.input)

@@ -65,7 +65,7 @@ values ("!").
 
 It reads a role ("role:admin") and also rule references ("rule:admin")
 
-"and" expressions are accepted, but not "or"s yet.
+"and" and "or" expressions are accepted.
 
 TODO
 ----
@@ -77,8 +77,6 @@ TODO
 * Comparison with credentials (project_id, user_id, is_admin)
 
 * Comparison with target
-
-* "or" expressions
 
 * parentheses
 
