@@ -213,6 +213,11 @@ func TestOsloPolicy2RegoErrors(t *testing.T) {
 	"secrets:get": 1
 }`
 
+	emptyMap := `
+{
+	"secrets:get": {}
+}`
+
 	nestedMap := `
 {
 	"secrets:get": {
@@ -231,6 +236,7 @@ func TestOsloPolicy2RegoErrors(t *testing.T) {
 		{"Invalidly formatted input should fail", wrongInput},
 		{"List with items should fail", listWithItems},
 		{"Numeric value should fail", numericValue},
+		{"Empty map should fail", emptyMap},
 		{"Nested map should fail", nestedMap},
 		{"invalid value should fail", invalidValueShouldFail},
 	}
