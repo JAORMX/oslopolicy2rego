@@ -44,6 +44,8 @@ const aliasTemplate = `{{.Name}} {
     {{.Rules}}
 }`
 
+// Initialized the parsedRego object. This involves initializing the template
+// objects in order to render the rego rules.
 func (o *parsedRego) Init() error {
 	tmpl, err := template.New("OpenStackRegoBase").Parse(baseTemplate)
 	if err != nil {
@@ -64,6 +66,8 @@ func (o *parsedRego) Init() error {
 	return nil
 }
 
+// renders the named rego segment related to the templateName. Currently we
+// only have three: OpenStackRegoBase, Action, Alias
 func (o parsedRego) renderTemplate(templateName string, outputStruct interface{}) string {
 	var render bytes.Buffer
 
@@ -83,6 +87,7 @@ func (o parsedRego) String() string {
 	return o.renderTemplate("OpenStackRegoBase", o)
 }
 
+// Renders "not" statements for any given rule
 func (o parsedRego) renderNotStatements(value string) ([]string, error) {
 	rules, err := o.renderRules(value)
 	if err != nil {
@@ -95,6 +100,8 @@ func (o parsedRego) renderNotStatements(value string) ([]string, error) {
 	return modifiedRules, nil
 }
 
+// Renders several assertions based on "and" statements for any given number of
+// rules
 func (o parsedRego) renderMultipleAssertionsWithAnd(value string) (string, error) {
 	var outputRules []string
 	unparsedRules := strings.Split(value, " and ")
@@ -109,6 +116,8 @@ func (o parsedRego) renderMultipleAssertionsWithAnd(value string) (string, error
 	return strings.Join(outputRules, "\n    "), nil
 }
 
+// Renders several rules based on "or" statements based on any given number of
+// rules
 func (o parsedRego) renderMultipleRulesWithOr(value string) ([]string, error) {
 	var outputRules []string
 	unparsedRules := strings.Split(value, " or ")
@@ -123,6 +132,10 @@ func (o parsedRego) renderMultipleRulesWithOr(value string) ([]string, error) {
 	return outputRules, nil
 }
 
+// Actual parsing function that handles the different cases from oslo.policy.
+// It'll parse both simple (rules, roles, statements, constants and
+// comparisons), as well as composed statements (ands, ors parentheses). This
+// will return a list of strings
 func (o parsedRego) renderRules(value interface{}) ([]string, error) {
 	var outputRules []string
 	switch typedValue := value.(type) {
