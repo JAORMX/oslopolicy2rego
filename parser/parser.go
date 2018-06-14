@@ -151,20 +151,18 @@ func (o parsedRego) renderComparison(value string) (string, error) {
 		return comparedValues[1], nil
 	} else if comparedValues[0] == "role" {
 		return "credentials.roles[_] = \"" + comparedValues[1] + "\"", nil
-	}
-
-	targetValue := ""
-
-	if strings.HasPrefix(comparedValues[1], "%(") {
+	} else if strings.HasPrefix(comparedValues[1], "%(") {
+		targetValue := ""
 		if strings.HasSuffix(comparedValues[1], ")s") {
 			targetValue = "target." + comparedValues[1][2:len(comparedValues[1])-2]
 		} else {
 			errorMessage := fmt.Sprintf("Unmatched parentheses in value %v", value)
 			return "", errors.New(errorMessage)
 		}
+		return "credentials." + comparedValues[0] + " = " + targetValue, nil
 	}
 
-	return "credentials." + comparedValues[0] + " = " + targetValue, nil
+	return "credentials." + comparedValues[0] + " = \"" + comparedValues[1] + "\"", nil
 }
 
 // Actual parsing function that handles the different cases from oslo.policy.
