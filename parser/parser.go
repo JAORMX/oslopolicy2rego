@@ -132,6 +132,41 @@ func (o parsedRego) renderMultipleRulesWithOr(value string) ([]string, error) {
 	return outputRules, nil
 }
 
+// Renders value comparisons, which can be:
+// * rule assertions
+// * role assertions
+// * comparing a value coming from the credentials with a value coming from the
+//   target
+// * Constant value comparison
+func (o parsedRego) renderComparison(value string) (string, error) {
+	comparedValues := strings.SplitN(value, ":", 2)
+
+	if comparedValues[0] == "" {
+		errorMessage := fmt.Sprintf("You need to provide a left operand for the comparison: %v", value)
+		return "", errors.New(errorMessage)
+	} else if comparedValues[1] == "" {
+		errorMessage := fmt.Sprintf("You need to provide a right operand for the comparison: %v", value)
+		return "", errors.New(errorMessage)
+	} else if comparedValues[0] == "rule" {
+		return comparedValues[1], nil
+	} else if comparedValues[0] == "role" {
+		return "credentials.roles[_] = \"" + comparedValues[1] + "\"", nil
+	}
+
+	targetValue := ""
+
+	if strings.HasPrefix(comparedValues[1], "%(") {
+		if strings.HasSuffix(comparedValues[1], ")s") {
+			targetValue = "target." + comparedValues[1][2:len(comparedValues[1])-2]
+		} else {
+			errorMessage := fmt.Sprintf("Unmatched parentheses in value %v", value)
+			return "", errors.New(errorMessage)
+		}
+	}
+
+	return "credentials." + comparedValues[0] + " = " + targetValue, nil
+}
+
 // Actual parsing function that handles the different cases from oslo.policy.
 // It'll parse both simple (rules, roles, statements, constants and
 // comparisons), as well as composed statements (ands, ors parentheses). This
@@ -158,11 +193,12 @@ func (o parsedRego) renderRules(value interface{}) ([]string, error) {
 				return nil, err
 			}
 			outputRules = append(outputRules, rules...)
-		} else if strings.HasPrefix(typedValue, "rule:") {
-			outputRules = append(outputRules, typedValue[5:])
-		} else if strings.HasPrefix(typedValue, "role:") {
-			roleAssertion := "credentials.roles[_] = \"" + typedValue[5:] + "\""
-			outputRules = append(outputRules, roleAssertion)
+		} else if strings.Contains(typedValue, ":") {
+			rule, err := o.renderComparison(typedValue)
+			if err != nil {
+				return nil, err
+			}
+			outputRules = append(outputRules, rule)
 		} else if typedValue == "!" {
 			outputRules = append(outputRules, "false")
 		} else if typedValue == "" || typedValue == "@" {

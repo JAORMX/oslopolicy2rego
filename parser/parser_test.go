@@ -168,6 +168,15 @@ default allow = false`
     reader
 }`}
 
+	credentialsTargetComparisonInput := `
+{
+	"secret_project_match": "project:%(target.secret.project_id)s",
+}
+`
+	credentialsTargetComparisonOutput := []string{`secret_project_match {
+    credentials.project = target.target.secret.project_id
+}`}
+
 	cases := []struct {
 		description string
 		input       string
@@ -181,17 +190,23 @@ default allow = false`
 		{"Action should always be true given an @ sign", alwaysTrueWithAtSignInput, alwaysTrue},
 		{"Should add multiple assertions with the 'and' keyword", multipleAssertionsWithAndInput, multipleAssertionsWithAndOutput},
 		{"Should add multiple rules with the 'or' keyword", multipleRulesWithOrInput, multipleRulesWithOrOutput},
+		{"Should render comparison between incoming credentials and target", credentialsTargetComparisonInput, credentialsTargetComparisonOutput},
 	}
 	for _, c := range cases {
-		got, _ := OsloPolicy2Rego(c.input)
-		if !strings.HasPrefix(got, regoPolicyHeader) {
-			t.Errorf("OsloPolicy2Rego() test case \"%s\" with input:\n %s\n\nDidn't render the header:\n%s\nGot:\n%s",
-				c.description, c.input, regoPolicyHeader, got)
-		}
-		for _, wantedOutput := range c.want {
-			if !strings.Contains(got, wantedOutput) {
-				t.Errorf("OsloPolicy2Rego() test case \"%s\" with input:\n %s\n\nDidn't contain:\n%s\nGot:\n%s",
-					c.description, c.input, c.want, got)
+		got, err := OsloPolicy2Rego(c.input)
+		if err != nil {
+			t.Errorf("OsloPolicy2Rego() test case \"%s\" with input:\n %s\n\nFailed with:\n%v",
+				c.description, c.input, err)
+		} else {
+			if !strings.HasPrefix(got, regoPolicyHeader) {
+				t.Errorf("OsloPolicy2Rego() test case \"%s\" with input:\n %s\n\nDidn't render the header:\n%s\nGot:\n%s",
+					c.description, c.input, regoPolicyHeader, got)
+			}
+			for _, wantedOutput := range c.want {
+				if !strings.Contains(got, wantedOutput) {
+					t.Errorf("OsloPolicy2Rego() test case \"%s\" with input:\n %s\n\nDidn't contain:\n%s\nGot:\n%s",
+						c.description, c.input, c.want, got)
+				}
 			}
 		}
 	}
@@ -229,6 +244,24 @@ func TestOsloPolicy2RegoErrors(t *testing.T) {
 {
 	"secrets:get": "aljksdfklasdf"
 }`
+
+	credentialsTargetComparisonInvalidInput := `
+{
+	"secret_project_match": "project:%(target.secret.project_ids",
+}
+`
+
+	comparisonWithNoRightOperandInput := `
+{
+	"secret_project_match": "project:",
+}
+`
+
+	comparisonWithNoLeftOperandInput := `
+{
+	"secret_project_match": ":%(project)s",
+}
+`
 	cases := []struct {
 		description string
 		input       string
@@ -239,6 +272,9 @@ func TestOsloPolicy2RegoErrors(t *testing.T) {
 		{"Empty map should fail", emptyMap},
 		{"Nested map should fail", nestedMap},
 		{"invalid value should fail", invalidValueShouldFail},
+		{"Missing parentheses from credentials target comparison should fail", credentialsTargetComparisonInvalidInput},
+		{"No right operand in comparison should fail", comparisonWithNoRightOperandInput},
+		{"No left operand in comparison should fail", comparisonWithNoLeftOperandInput},
 	}
 	for _, c := range cases {
 		got, err := OsloPolicy2Rego(c.input)

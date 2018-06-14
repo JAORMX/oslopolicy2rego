@@ -71,10 +71,6 @@ TODO
 
 * Comparison with constant value
 
-* Comparison with credentials (project_id, user_id, is_admin)
-
-* Comparison with target
-
 * parentheses
 
 [1] https://docs.openstack.org/oslo.policy/latest/index.html
