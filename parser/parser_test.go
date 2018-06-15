@@ -211,6 +211,36 @@ default allow = false`
     credentials.project = 123
 }`}
 
+	leftSideBooleanTrueValueComparisonInput := `
+{
+	"secret_project_match": "True:project",
+}
+`
+	rightSideBooleanTrueValueComparisonInput := `
+{
+	"secret_project_match": "project:True",
+}
+`
+
+	booleanTrueValueComparisonOutput := []string{`secret_project_match {
+    credentials.project = true
+}`}
+
+	leftSideBooleanFalseValueComparisonInput := `
+{
+	"secret_project_match": "False:project",
+}
+`
+	rightSideBooleanFalseValueComparisonInput := `
+{
+	"secret_project_match": "project:False",
+}
+`
+
+	booleanFalseValueComparisonOutput := []string{`secret_project_match {
+    credentials.project = false
+}`}
+
 	cases := []struct {
 		description string
 		input       string
@@ -230,6 +260,10 @@ default allow = false`
 		{"Should render comparison between incoming credentials and quoted string on the right", rightSideQuotedStringValueComparisonInput, stringValueComparisonOutput},
 		{"Should render comparison between incoming credentials and number on the left", leftSideNumberValueComparisonInput, numberValueComparisonOutput},
 		{"Should render comparison between incoming credentials and number on the right", rightSideNumberValueComparisonInput, numberValueComparisonOutput},
+		{"Should render comparison between incoming credentials and true boolean value on the left", leftSideBooleanTrueValueComparisonInput, booleanTrueValueComparisonOutput},
+		{"Should render comparison between incoming credentials and true boolean value on the right", rightSideBooleanTrueValueComparisonInput, booleanTrueValueComparisonOutput},
+		{"Should render comparison between incoming credentials and false boolean value on the left", leftSideBooleanFalseValueComparisonInput, booleanFalseValueComparisonOutput},
+		{"Should render comparison between incoming credentials and false boolean value on the right", rightSideBooleanFalseValueComparisonInput, booleanFalseValueComparisonOutput},
 	}
 	for _, c := range cases {
 		got, err := OsloPolicy2Rego(c.input)

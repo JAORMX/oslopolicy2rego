@@ -69,8 +69,6 @@ as handle the rule negations ("not" statement).
 TODO
 ----
 
-* Comparison with constant value
-
 * parentheses
 
 [1] https://docs.openstack.org/oslo.policy/latest/index.html

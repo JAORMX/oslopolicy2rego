@@ -148,6 +148,13 @@ func (o parsedRego) valueIsNumber(stringValue string) bool {
 	return true
 }
 
+func (o parsedRego) valueIsBoolean(stringValue string) bool {
+	if stringValue == "True" || stringValue == "False" {
+		return true
+	}
+	return false
+}
+
 // Renders value comparisons, which can be:
 // * rule assertions
 // * role assertions
@@ -176,6 +183,10 @@ func (o parsedRego) renderComparison(value string) (string, error) {
 			return "", errors.New(errorMessage)
 		}
 		return "credentials." + comparedValues[0] + " = " + targetValue, nil
+	} else if o.valueIsBoolean(comparedValues[0]) {
+		return "credentials." + comparedValues[1] + " = " + strings.ToLower(comparedValues[0]), nil
+	} else if o.valueIsBoolean(comparedValues[1]) {
+		return "credentials." + comparedValues[0] + " = " + strings.ToLower(comparedValues[1]), nil
 	} else if o.valueIsNumber(comparedValues[0]) {
 		return "credentials." + comparedValues[1] + " = " + comparedValues[0], nil
 	} else if o.valueIsNumber(comparedValues[1]) {
