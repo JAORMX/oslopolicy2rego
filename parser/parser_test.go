@@ -241,6 +241,15 @@ default allow = false`
     credentials.project = false
 }`}
 
+	constantTargetComparisonInput := `
+{
+	"secret_project_match": "False:%(target.secret.project_id)s",
+}
+`
+	constantTargetComparisonOutput := []string{`secret_project_match {
+    false = target.target.secret.project_id
+}`}
+
 	cases := []struct {
 		description string
 		input       string
@@ -264,6 +273,7 @@ default allow = false`
 		{"Should render comparison between incoming credentials and true boolean value on the right", rightSideBooleanTrueValueComparisonInput, booleanTrueValueComparisonOutput},
 		{"Should render comparison between incoming credentials and false boolean value on the left", leftSideBooleanFalseValueComparisonInput, booleanFalseValueComparisonOutput},
 		{"Should render comparison between incoming credentials and false boolean value on the right", rightSideBooleanFalseValueComparisonInput, booleanFalseValueComparisonOutput},
+		{"Should render comparison between constant and target", constantTargetComparisonInput, constantTargetComparisonOutput},
 	}
 	for _, c := range cases {
 		got, err := OsloPolicy2Rego(c.input)

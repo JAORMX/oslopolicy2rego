@@ -155,6 +155,38 @@ func (o parsedRego) valueIsBoolean(stringValue string) bool {
 	return false
 }
 
+// Renders the comparison between two values. If they haven't matched a type,
+// they are assumed to come from the credentials, so we render it as such. If
+// they matched a type we render the value as was given.
+func (o parsedRego) renderConstantComparison(leftValue string, leftMatched bool,
+	rightValue string, rightMatched bool) string {
+	if leftMatched && rightMatched {
+		return leftValue + " = " + rightValue
+	} else if !leftMatched && rightMatched {
+		return "credentials." + leftValue + " = " + rightValue
+	} else if leftMatched && !rightMatched {
+		return "credentials." + rightValue + " = " + leftValue
+	}
+	return "credentials." + leftValue + " = \"" + rightValue + "\""
+}
+
+// Renders a constant value comparison. This will return the rendered value (as
+// it should be persisted in rego), or will just output the value as the
+// result. If the value didn't match any of the types boolean, string or
+// number, the second boolean output will be set to false, indicating that no
+// match was found.
+func (o parsedRego) renderComparisonConstant(value string) (string, bool) {
+	if o.valueIsBoolean(value) {
+		return strings.ToLower(value), true
+	} else if o.valueIsNumber(value) {
+		return value, true
+	} else if o.valueIsQuotedString(value) {
+		return "\"" + value[1:len(value)-1] + "\"", true
+	}
+
+	return value, false
+}
+
 // Renders value comparisons, which can be:
 // * rule assertions
 // * role assertions
@@ -182,22 +214,13 @@ func (o parsedRego) renderComparison(value string) (string, error) {
 			errorMessage := fmt.Sprintf("Unmatched parentheses in value %v", value)
 			return "", errors.New(errorMessage)
 		}
-		return "credentials." + comparedValues[0] + " = " + targetValue, nil
-	} else if o.valueIsBoolean(comparedValues[0]) {
-		return "credentials." + comparedValues[1] + " = " + strings.ToLower(comparedValues[0]), nil
-	} else if o.valueIsBoolean(comparedValues[1]) {
-		return "credentials." + comparedValues[0] + " = " + strings.ToLower(comparedValues[1]), nil
-	} else if o.valueIsNumber(comparedValues[0]) {
-		return "credentials." + comparedValues[1] + " = " + comparedValues[0], nil
-	} else if o.valueIsNumber(comparedValues[1]) {
-		return "credentials." + comparedValues[0] + " = " + comparedValues[1], nil
-	} else if o.valueIsQuotedString(comparedValues[0]) {
-		return "credentials." + comparedValues[1] + " = \"" + comparedValues[0][1:len(comparedValues[0])-1] + "\"", nil
-	} else if o.valueIsQuotedString(comparedValues[1]) {
-		return "credentials." + comparedValues[0] + " = \"" + comparedValues[1][1:len(comparedValues[1])-1] + "\"", nil
+		leftValue, leftMatched := o.renderComparisonConstant(comparedValues[0])
+		return o.renderConstantComparison(leftValue, leftMatched, targetValue, true), nil
 	}
 
-	return "credentials." + comparedValues[0] + " = \"" + comparedValues[1] + "\"", nil
+	leftValue, leftMatched := o.renderComparisonConstant(comparedValues[0])
+	rightValue, rightMatched := o.renderComparisonConstant(comparedValues[1])
+	return o.renderConstantComparison(leftValue, leftMatched, rightValue, rightMatched), nil
 }
 
 // Actual parsing function that handles the different cases from oslo.policy.
