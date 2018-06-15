@@ -182,9 +182,20 @@ default allow = false`
 	"secret_project_match": "project:asdf",
 }
 `
-	literalStringValueComparisonOutput := []string{`secret_project_match {
+	stringValueComparisonOutput := []string{`secret_project_match {
     credentials.project = "asdf"
 }`}
+
+	leftSideQuotedStringValueComparisonInput := `
+{
+	"secret_project_match": "'asdf':project",
+}
+`
+	rightSideQuotedStringValueComparisonInput := `
+{
+	"secret_project_match": "project:'asdf'",
+}
+`
 
 	cases := []struct {
 		description string
@@ -200,7 +211,9 @@ default allow = false`
 		{"Should add multiple assertions with the 'and' keyword", multipleAssertionsWithAndInput, multipleAssertionsWithAndOutput},
 		{"Should add multiple rules with the 'or' keyword", multipleRulesWithOrInput, multipleRulesWithOrOutput},
 		{"Should render comparison between incoming credentials and target", credentialsTargetComparisonInput, credentialsTargetComparisonOutput},
-		{"Should render comparison between incoming credentials and string", literalStringValueComparisonInput, literalStringValueComparisonOutput},
+		{"Should render comparison between incoming credentials and string", literalStringValueComparisonInput, stringValueComparisonOutput},
+		{"Should render comparison between incoming credentials and quoted string on the left", leftSideQuotedStringValueComparisonInput, stringValueComparisonOutput},
+		{"Should render comparison between incoming credentials and quoted string on the right", rightSideQuotedStringValueComparisonInput, stringValueComparisonOutput},
 	}
 	for _, c := range cases {
 		got, err := OsloPolicy2Rego(c.input)

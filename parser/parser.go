@@ -132,6 +132,13 @@ func (o parsedRego) renderMultipleRulesWithOr(value string) ([]string, error) {
 	return outputRules, nil
 }
 
+func (o parsedRego) valueIsQuotedString(stringValue string) bool {
+	if stringValue[0] == '\'' && stringValue[len(stringValue)-1] == '\'' {
+		return true
+	}
+	return false
+}
+
 // Renders value comparisons, which can be:
 // * rule assertions
 // * role assertions
@@ -160,6 +167,10 @@ func (o parsedRego) renderComparison(value string) (string, error) {
 			return "", errors.New(errorMessage)
 		}
 		return "credentials." + comparedValues[0] + " = " + targetValue, nil
+	} else if o.valueIsQuotedString(comparedValues[0]) {
+		return "credentials." + comparedValues[1] + " = \"" + comparedValues[0][1:len(comparedValues[0])-1] + "\"", nil
+	} else if o.valueIsQuotedString(comparedValues[1]) {
+		return "credentials." + comparedValues[0] + " = \"" + comparedValues[1][1:len(comparedValues[1])-1] + "\"", nil
 	}
 
 	return "credentials." + comparedValues[0] + " = \"" + comparedValues[1] + "\"", nil
