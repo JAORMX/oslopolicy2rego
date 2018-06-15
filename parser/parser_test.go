@@ -196,6 +196,20 @@ default allow = false`
 	"secret_project_match": "project:'asdf'",
 }
 `
+	leftSideNumberValueComparisonInput := `
+{
+	"secret_project_match": "123:project",
+}
+`
+	rightSideNumberValueComparisonInput := `
+{
+	"secret_project_match": "project:123",
+}
+`
+
+	numberValueComparisonOutput := []string{`secret_project_match {
+    credentials.project = 123
+}`}
 
 	cases := []struct {
 		description string
@@ -214,6 +228,8 @@ default allow = false`
 		{"Should render comparison between incoming credentials and string", literalStringValueComparisonInput, stringValueComparisonOutput},
 		{"Should render comparison between incoming credentials and quoted string on the left", leftSideQuotedStringValueComparisonInput, stringValueComparisonOutput},
 		{"Should render comparison between incoming credentials and quoted string on the right", rightSideQuotedStringValueComparisonInput, stringValueComparisonOutput},
+		{"Should render comparison between incoming credentials and number on the left", leftSideNumberValueComparisonInput, numberValueComparisonOutput},
+		{"Should render comparison between incoming credentials and number on the right", rightSideNumberValueComparisonInput, numberValueComparisonOutput},
 	}
 	for _, c := range cases {
 		got, err := OsloPolicy2Rego(c.input)
