@@ -345,6 +345,24 @@ func TestOsloPolicy2RegoErrors(t *testing.T) {
 	"secret_project_match": ":%(project)s",
 }
 `
+
+	InvalidAssertionInOrStatementInput := `
+{
+	"secret_project_match": "rule:my_rule or :%(project)s",
+}
+`
+
+	InvalidAssertionInAndStatementInput := `
+{
+	"secret_project_match": "rule:my_rule and project:",
+}
+`
+
+	InvalidAssertionInNotStatementInput := `
+{
+	"secret_project_match": "not project:%(target.secret.project_ids",
+}
+`
 	cases := []struct {
 		description string
 		input       string
@@ -358,6 +376,9 @@ func TestOsloPolicy2RegoErrors(t *testing.T) {
 		{"Missing parentheses from credentials target comparison should fail", credentialsTargetComparisonInvalidInput},
 		{"No right operand in comparison should fail", comparisonWithNoRightOperandInput},
 		{"No left operand in comparison should fail", comparisonWithNoLeftOperandInput},
+		{"Invalid assertion in or statement should fail", InvalidAssertionInOrStatementInput},
+		{"Invalid assertion in and statement should fail", InvalidAssertionInAndStatementInput},
+		{"Invalid assertion in not statement should fail", InvalidAssertionInNotStatementInput},
 	}
 	for _, c := range cases {
 		got, err := OsloPolicy2Rego(c.input)
