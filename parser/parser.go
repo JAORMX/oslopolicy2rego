@@ -158,7 +158,7 @@ func (o parsedRego) valueIsBoolean(stringValue string) bool {
 // Renders the comparison between two values. If they haven't matched a type,
 // they are assumed to come from the credentials, so we render it as such. If
 // they matched a type we render the value as was given.
-func (o parsedRego) renderConstantComparison(leftValue string, leftMatched bool,
+func (o parsedRego) renderComparison(leftValue string, leftMatched bool,
 	rightValue string, rightMatched bool) string {
 	if leftMatched && rightMatched {
 		return leftValue + " = " + rightValue
@@ -170,12 +170,12 @@ func (o parsedRego) renderConstantComparison(leftValue string, leftMatched bool,
 	return "credentials." + leftValue + " = \"" + rightValue + "\""
 }
 
-// Renders a constant value comparison. This will return the rendered value (as
-// it should be persisted in rego), or will just output the value as the
-// result. If the value didn't match any of the types boolean, string or
-// number, the second boolean output will be set to false, indicating that no
-// match was found.
-func (o parsedRego) renderComparisonConstant(value string) (string, bool) {
+// Renders a constant value which is used in a comparison. This will return the
+// rendered value (as it should be persisted in rego), or will just output the
+// value as the result. If the value didn't match any of the types boolean,
+// string or number, the second boolean output will be set to false, indicating
+// that no match was found.
+func (o parsedRego) renderConstantForComparison(value string) (string, bool) {
 	if o.valueIsBoolean(value) {
 		return strings.ToLower(value), true
 	} else if o.valueIsNumber(value) {
@@ -187,13 +187,13 @@ func (o parsedRego) renderComparisonConstant(value string) (string, bool) {
 	return value, false
 }
 
-// Renders value comparisons, which can be:
+// parses value comparisons, which can be:
 // * rule assertions
 // * role assertions
 // * comparing a value coming from the credentials with a value coming from the
 //   target
 // * Constant value comparison
-func (o parsedRego) renderComparison(value string) (string, error) {
+func (o parsedRego) parseComparison(value string) (string, error) {
 	comparedValues := strings.SplitN(value, ":", 2)
 
 	if comparedValues[0] == "" {
@@ -203,9 +203,13 @@ func (o parsedRego) renderComparison(value string) (string, error) {
 		errorMessage := fmt.Sprintf("You need to provide a right operand for the comparison: %v", value)
 		return "", errors.New(errorMessage)
 	} else if comparedValues[0] == "rule" {
+		// No need to render anything, pass the value as-is
 		return comparedValues[1], nil
 	} else if comparedValues[0] == "role" {
-		return "credentials.roles[_] = \"" + comparedValues[1] + "\"", nil
+		// Pass in role comparison, which will be rendered being gotten from
+		// the credentials. When none of the cases match it renders the right
+		// value as a quoted string, which is what we want in this case.
+		return o.renderComparison("roles[_]", false, comparedValues[1], false), nil
 	} else if strings.HasPrefix(comparedValues[1], "%(") {
 		targetValue := ""
 		if strings.HasSuffix(comparedValues[1], ")s") {
@@ -214,13 +218,13 @@ func (o parsedRego) renderComparison(value string) (string, error) {
 			errorMessage := fmt.Sprintf("Unmatched parentheses in value %v", value)
 			return "", errors.New(errorMessage)
 		}
-		leftValue, leftMatched := o.renderComparisonConstant(comparedValues[0])
-		return o.renderConstantComparison(leftValue, leftMatched, targetValue, true), nil
+		leftValue, leftMatched := o.renderConstantForComparison(comparedValues[0])
+		return o.renderComparison(leftValue, leftMatched, targetValue, true), nil
 	}
 
-	leftValue, leftMatched := o.renderComparisonConstant(comparedValues[0])
-	rightValue, rightMatched := o.renderComparisonConstant(comparedValues[1])
-	return o.renderConstantComparison(leftValue, leftMatched, rightValue, rightMatched), nil
+	leftValue, leftMatched := o.renderConstantForComparison(comparedValues[0])
+	rightValue, rightMatched := o.renderConstantForComparison(comparedValues[1])
+	return o.renderComparison(leftValue, leftMatched, rightValue, rightMatched), nil
 }
 
 // Actual parsing function that handles the different cases from oslo.policy.
@@ -250,7 +254,7 @@ func (o parsedRego) renderRules(value interface{}) ([]string, error) {
 			}
 			outputRules = append(outputRules, rules...)
 		} else if strings.Contains(typedValue, ":") {
-			rule, err := o.renderComparison(typedValue)
+			rule, err := o.parseComparison(typedValue)
 			if err != nil {
 				return nil, err
 			}
