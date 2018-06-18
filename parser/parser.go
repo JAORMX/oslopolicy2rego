@@ -48,20 +48,9 @@ const aliasTemplate = `{{.Name}} {
 // Initialized the parsedRego object. This involves initializing the template
 // objects in order to render the rego rules.
 func (o *parsedRego) Init() error {
-	tmpl, err := template.New("OpenStackRegoBase").Parse(baseTemplate)
-	if err != nil {
-		return err
-	}
-
-	tmpl, err = tmpl.New("Action").Parse(actionTemplate)
-	if err != nil {
-		return err
-	}
-
-	tmpl, err = tmpl.New("Alias").Parse(aliasTemplate)
-	if err != nil {
-		return err
-	}
+	tmpl, _ := template.New("OpenStackRegoBase").Parse(baseTemplate)
+	tmpl, _ = tmpl.New("Action").Parse(actionTemplate)
+	tmpl, _ = tmpl.New("Alias").Parse(aliasTemplate)
 
 	o.Tmpl = tmpl
 	return nil
