@@ -40,6 +40,11 @@ install: generate
 test: generate
 	$(GO) test $(PACKAGES) -count 10
 
+cover: generate
+	@mkdir -p coverage/$(shell dirname $@)
+	$(GO) test -covermode=count -coverprofile=coverage/$(shell dirname $@)/coverage.out $(PACKAGES)
+	$(GO) tool cover -html=coverage/$(shell dirname $@)/coverage.out || true
+
 fmt:
 	$(GO) fmt $(PACKAGES)
 
