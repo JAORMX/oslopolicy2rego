@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math/rand"
+	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
@@ -18,13 +20,16 @@ type regoRules struct {
 
 // Wrapper struct to write the template
 type parsedRego struct {
-	Rules regoRules
-	Tmpl  *template.Template
+	Rules             regoRules
+	Tmpl              *template.Template
+	ParenthesesRegexp *regexp.Regexp
 }
 
 func (o regoRules) String() string {
 	return strings.Join(o.rules, "\n")
 }
+
+const parenthesesRegexpString = `(^|\s)\(.*?\)(\s|$)`
 
 const baseTemplate = `
 package openstack.policy
@@ -53,6 +58,7 @@ func (o *parsedRego) Init() error {
 	tmpl, _ = tmpl.New("Alias").Parse(aliasTemplate)
 
 	o.Tmpl = tmpl
+	o.ParenthesesRegexp = regexp.MustCompile(parenthesesRegexpString)
 	return nil
 }
 
@@ -79,7 +85,7 @@ func (o parsedRego) String() string {
 
 // Renders "not" statements for any given rule
 func (o parsedRego) renderNotStatements(value string) ([]string, error) {
-	rules, err := o.renderRules(value)
+	rules, _, err := o.renderRules(value)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +102,7 @@ func (o parsedRego) renderMultipleAssertionsWithAnd(value string) (string, error
 	var outputRules []string
 	unparsedRules := strings.Split(value, " and ")
 	for _, unparsedRule := range unparsedRules {
-		parsedRule, err := o.renderRules(unparsedRule)
+		parsedRule, _, err := o.renderRules(unparsedRule)
 		if err != nil {
 			return "", err
 		}
@@ -112,7 +118,7 @@ func (o parsedRego) renderMultipleRulesWithOr(value string) ([]string, error) {
 	var outputRules []string
 	unparsedRules := strings.Split(value, " or ")
 	for _, unparsedRule := range unparsedRules {
-		parsedRule, err := o.renderRules(unparsedRule)
+		parsedRule, _, err := o.renderRules(unparsedRule)
 		if err != nil {
 			return nil, err
 		}
@@ -216,36 +222,84 @@ func (o parsedRego) parseComparison(value string) (string, error) {
 	return o.renderComparison(leftValue, leftMatched, rightValue, rightMatched), nil
 }
 
+// Checks if the given value contains a parentheses expression
+func (o parsedRego) containsParenthesesExpression(value string) bool {
+	return o.ParenthesesRegexp.MatchString(value)
+}
+
+// Returns a random alias name with the named prefix
+func randomAliasName(prefix string) string {
+	return fmt.Sprintf("%s_%d", prefix, rand.Int())
+}
+
+// renders a parentheses expression, which is done by creating a new rule in
+// rego that will be refrenced by a random name. This returns the new
+// expression that still needs to be evaluated, a key to reference the new rule
+// with, and a string containing the sub-expression whithin the parentheses.
+func (o parsedRego) renderParenthesesExpression(value string) (string, map[string]string, error) {
+	if strings.Count(value, "(") != strings.Count(value, ")") {
+		errorMessage := fmt.Sprintf("Unmatched parentheses in value %v", value)
+		return "", nil, errors.New(errorMessage)
+	}
+	replacedExpressions := make(map[string]string)
+	outputValue := o.ParenthesesRegexp.ReplaceAllStringFunc(value, func(matchedValue string) string {
+		matchStart := 1
+		startSeparator := ""
+		matchEnd := len(matchedValue) - 1
+		if matchedValue[0] == ' ' {
+			matchStart = 2
+			startSeparator = " "
+		}
+		if matchedValue[len(matchedValue)-1] == ' ' {
+			matchEnd = matchEnd - 1
+		}
+		aliasName := randomAliasName("openstack_rule")
+		replacedExpressions[aliasName] = matchedValue[matchStart:matchEnd]
+		return startSeparator + "rule:" + aliasName
+	})
+	return outputValue, replacedExpressions, nil
+}
+
 // Actual parsing function that handles the different cases from oslo.policy.
 // It'll parse both simple (rules, roles, statements, constants and
 // comparisons), as well as composed statements (ands, ors parentheses). This
 // will return a list of strings
-func (o parsedRego) renderRules(value interface{}) ([]string, error) {
+func (o parsedRego) renderRules(value interface{}) ([]string, map[string]string, error) {
 	var outputRules []string
+	var leftoverRules map[string]string
 	switch typedValue := value.(type) {
 	case string:
+		if o.containsParenthesesExpression(typedValue) {
+			var err error
+			typedValue, leftoverRules, err = o.renderParenthesesExpression(typedValue)
+
+			if err != nil {
+				return nil, nil, err
+			}
+		}
+
 		if strings.Contains(typedValue, " and ") {
 			assertions, err := o.renderMultipleAssertionsWithAnd(typedValue)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			outputRules = append(outputRules, assertions)
 		} else if strings.Contains(typedValue, " or ") {
 			rules, err := o.renderMultipleRulesWithOr(typedValue)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			outputRules = append(outputRules, rules...)
 		} else if strings.HasPrefix(typedValue, "not ") {
 			rules, err := o.renderNotStatements(typedValue[4:])
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			outputRules = append(outputRules, rules...)
 		} else if strings.Contains(typedValue, ":") {
 			rule, err := o.parseComparison(typedValue)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			outputRules = append(outputRules, rule)
 		} else if typedValue == "!" {
@@ -254,29 +308,29 @@ func (o parsedRego) renderRules(value interface{}) ([]string, error) {
 			outputRules = append(outputRules, "true")
 		} else {
 			errorMessage := fmt.Sprintf("The value %v is invalid", typedValue)
-			return nil, errors.New(errorMessage)
+			return nil, nil, errors.New(errorMessage)
 		}
 	case []interface{}:
 		if len(typedValue) == 0 {
 			outputRules = append(outputRules, "true")
 		} else {
-			return nil, errors.New("Can't give non-empty lists as values")
+			return nil, nil, errors.New("Can't give non-empty lists as values")
 		}
 	default:
 		errorMessage := fmt.Sprintf("The value %v is invalid", typedValue)
-		return nil, errors.New(errorMessage)
+		return nil, nil, errors.New(errorMessage)
 	}
-	return outputRules, nil
+	return outputRules, leftoverRules, nil
 }
 
-func (o parsedRego) renderEntry(entryType, key string, value interface{}) (string, error) {
-	rules, err := o.renderRules(value)
+func (o parsedRego) renderEntry(entryType, key string, rules interface{}) (string, error) {
+	var output string
+	renderedRules, leftoverRules, err := o.renderRules(rules)
 	if err != nil {
 		return "", err
 	}
 
-	var output string
-	for _, rule := range rules {
+	for _, rule := range renderedRules {
 		entry := struct {
 			Name  string
 			Rules string
@@ -285,6 +339,14 @@ func (o parsedRego) renderEntry(entryType, key string, value interface{}) (strin
 			rule,
 		}
 		output = output + "\n" + o.renderTemplate(entryType, entry)
+	}
+
+	for leftoverKey, leftoverValue := range leftoverRules {
+		entry, err := o.renderEntry("Alias", leftoverKey, leftoverValue)
+		if err != nil {
+			return "", err
+		}
+		output = output + entry
 	}
 	return output, nil
 }
@@ -302,12 +364,12 @@ func (o *parsedRego) parseRules(rules map[string]interface{}) error {
 			entryType = "Alias"
 		}
 
-		alias, err := o.renderEntry(entryType, key, value)
+		entry, err := o.renderEntry(entryType, key, value)
 		if err != nil {
 			return err
 		}
 
-		rulesList = append(rulesList, alias)
+		rulesList = append(rulesList, entry)
 	}
 
 	o.Rules = regoRules{rulesList}

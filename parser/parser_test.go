@@ -250,6 +250,34 @@ default allow = false`
     false = target.target.secret.project_id
 }`}
 
+	simpleParenthesesInput := `
+{
+	"secrets:get": "rule:admin or (rule:creator and rule:reader)"
+}
+`
+
+	simpleParenthesesOutput := []string{`allow {
+    action_name = "secrets:get"
+    admin`, ` {
+    creator
+    reader
+}`}
+
+	multipleParenthesesInput := `
+{
+	"secrets:get": "rule:admin or (rule:creator and rule:reader) or (rule:foo and rule:bar)"
+}
+`
+
+	multipleParenthesesOutput := []string{`allow {
+    action_name = "secrets:get"
+    admin`, ` {
+    creator
+    reader
+}`, ` {
+    foo
+    bar
+}`}
 	cases := []struct {
 		description string
 		input       string
@@ -274,6 +302,8 @@ default allow = false`
 		{"Should render comparison between incoming credentials and false boolean value on the left", leftSideBooleanFalseValueComparisonInput, booleanFalseValueComparisonOutput},
 		{"Should render comparison between incoming credentials and false boolean value on the right", rightSideBooleanFalseValueComparisonInput, booleanFalseValueComparisonOutput},
 		{"Should render comparison between constant and target", constantTargetComparisonInput, constantTargetComparisonOutput},
+		{"Should parentheses expression (one level)", simpleParenthesesInput, simpleParenthesesOutput},
+		{"Should multiple parentheses expression", multipleParenthesesInput, multipleParenthesesOutput},
 	}
 	for _, c := range cases {
 		got, err := OsloPolicy2Rego(c.input)

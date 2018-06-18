@@ -66,10 +66,13 @@ as handle the rule negations ("not" statement).
 
 "and" and "or" expressions are accepted.
 
+Also expressions with parentheses are handled.
+
 TODO
 ----
 
-* parentheses
+* parentheses implementation is incomplete (It doesn't handle parentheses
+  within parentheses).
 
 [1] https://docs.openstack.org/oslo.policy/latest/index.html
 
