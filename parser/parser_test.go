@@ -265,7 +265,7 @@ default allow = false`
 
 	multipleParenthesesInput := `
 {
-	"secrets:get": "rule:admin or (rule:creator and rule:reader) or (rule:foo and rule:bar)"
+	"secrets:get": "rule:admin or (rule:creator and rule:reader) or not (rule:foo and rule:bar)"
 }
 `
 
