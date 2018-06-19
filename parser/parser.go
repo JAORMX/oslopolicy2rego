@@ -263,15 +263,17 @@ func (o parsedRego) renderParenthesesExpression(value string) (string, map[strin
 // Actual parsing function that handles the different cases from oslo.policy.
 // It'll parse both simple (rules, roles, statements, constants and
 // comparisons), as well as composed statements (ands, ors parentheses). This
-// will return a list of strings
+// will return a list of strings with the parsed rules, and a map of strings
+// with extra sub-expressions that are gotten from parentheses expressions;
+// which should be rendered separately
 func (o parsedRego) renderRules(value interface{}) ([]string, map[string]string, error) {
 	var outputRules []string
-	var leftoverRules map[string]string
+	var extraSubexpressions map[string]string
 	switch typedValue := value.(type) {
 	case string:
 		if o.containsParenthesesExpression(typedValue) {
 			var err error
-			typedValue, leftoverRules, err = o.renderParenthesesExpression(typedValue)
+			typedValue, extraSubexpressions, err = o.renderParenthesesExpression(typedValue)
 
 			if err != nil {
 				return nil, nil, err
@@ -320,12 +322,12 @@ func (o parsedRego) renderRules(value interface{}) ([]string, map[string]string,
 		errorMessage := fmt.Sprintf("The value %v is invalid", typedValue)
 		return nil, nil, errors.New(errorMessage)
 	}
-	return outputRules, leftoverRules, nil
+	return outputRules, extraSubexpressions, nil
 }
 
 func (o parsedRego) renderEntry(entryType, key string, rules interface{}) (string, error) {
 	var output string
-	renderedRules, leftoverRules, err := o.renderRules(rules)
+	renderedRules, extraSubexpressions, err := o.renderRules(rules)
 	if err != nil {
 		return "", err
 	}
@@ -341,8 +343,8 @@ func (o parsedRego) renderEntry(entryType, key string, rules interface{}) (strin
 		output = output + "\n" + o.renderTemplate(entryType, entry)
 	}
 
-	for leftoverKey, leftoverValue := range leftoverRules {
-		entry, err := o.renderEntry("Alias", leftoverKey, leftoverValue)
+	for subexpressionKey, subexpressionValue := range extraSubexpressions {
+		entry, err := o.renderEntry("Alias", subexpressionKey, subexpressionValue)
 		if err != nil {
 			return "", err
 		}
