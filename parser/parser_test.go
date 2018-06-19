@@ -393,6 +393,17 @@ func TestOsloPolicy2RegoErrors(t *testing.T) {
 	"secret_project_match": "not project:%(target.secret.project_ids",
 }
 `
+	unclosedParenthesesInput := `
+{
+	"secrets:get": "rule:admin or (rule:creator and rule:reader"
+}
+`
+
+	multipleUnclosedParenthesesInput := `
+{
+	"secrets:get": "rule:admin or (rule:foo and rule:bar) or (rule:creator and rule:reader"
+}
+`
 	cases := []struct {
 		description string
 		input       string
@@ -409,6 +420,8 @@ func TestOsloPolicy2RegoErrors(t *testing.T) {
 		{"Invalid assertion in or statement should fail", InvalidAssertionInOrStatementInput},
 		{"Invalid assertion in and statement should fail", InvalidAssertionInAndStatementInput},
 		{"Invalid assertion in not statement should fail", InvalidAssertionInNotStatementInput},
+		{"Unclosed parentheses should fail", unclosedParenthesesInput},
+		{"Multiple unclosed parentheses should fail", multipleUnclosedParenthesesInput},
 	}
 	for _, c := range cases {
 		got, err := OsloPolicy2Rego(c.input)
