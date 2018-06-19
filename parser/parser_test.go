@@ -252,13 +252,13 @@ default allow = false`
 
 	simpleParenthesesInput := `
 {
-	"secrets:get": "rule:admin or (rule:creator and rule:reader)"
+	"secrets:get": "False:%(target.secret.project_id)s or (rule:creator and rule:reader)"
 }
 `
 
 	simpleParenthesesOutput := []string{`allow {
     action_name = "secrets:get"
-    admin`, ` {
+    false = target.target.secret.project_id`, ` {
     creator
     reader
 }`}

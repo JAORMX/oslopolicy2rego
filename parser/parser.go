@@ -234,7 +234,7 @@ func (o parsedRego) containsParenthesesExpression(value string) bool {
 	if value[parenthesisIndex-1] == ' ' || value[parenthesisIndex-1] == '\t' {
 		return true
 	}
-	return false
+	return o.containsParenthesesExpression(value[parenthesisIndex+1:])
 }
 
 // Returns a random alias name with the named prefix
