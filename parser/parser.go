@@ -224,7 +224,17 @@ func (o parsedRego) parseComparison(value string) (string, error) {
 
 // Checks if the given value contains a parentheses expression
 func (o parsedRego) containsParenthesesExpression(value string) bool {
-	return o.ParenthesesRegexp.MatchString(value)
+	parenthesisIndex := strings.Index(value, "(")
+	if parenthesisIndex == -1 {
+		return false
+	}
+	if parenthesisIndex == 0 {
+		return true
+	}
+	if value[parenthesisIndex-1] == ' ' || value[parenthesisIndex-1] == '\t' {
+		return true
+	}
+	return false
 }
 
 // Returns a random alias name with the named prefix
