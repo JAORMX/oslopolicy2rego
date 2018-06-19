@@ -251,6 +251,14 @@ func (o parsedRego) renderParenthesesExpression(value string) (string, map[strin
 		errorMessage := fmt.Sprintf("Unmatched parentheses in value %v", value)
 		return "", nil, errors.New(errorMessage)
 	}
+
+	parenthesisStartIndex := strings.Index(value, "(")
+	parenthesisEndIndex := strings.Index(value, "(")
+
+	if parenthesisStartIndex+1 == parenthesisEndIndex {
+		return "", nil, errors.New("Empty parentheses expression given \"()\"")
+	}
+
 	replacedExpressions := make(map[string]string)
 	outputValue := o.ParenthesesRegexp.ReplaceAllStringFunc(value, func(matchedValue string) string {
 		matchStart := 1
