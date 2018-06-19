@@ -302,8 +302,8 @@ default allow = false`
 		{"Should render comparison between incoming credentials and false boolean value on the left", leftSideBooleanFalseValueComparisonInput, booleanFalseValueComparisonOutput},
 		{"Should render comparison between incoming credentials and false boolean value on the right", rightSideBooleanFalseValueComparisonInput, booleanFalseValueComparisonOutput},
 		{"Should render comparison between constant and target", constantTargetComparisonInput, constantTargetComparisonOutput},
-		{"Should parentheses expression (one level)", simpleParenthesesInput, simpleParenthesesOutput},
-		{"Should multiple parentheses expression", multipleParenthesesInput, multipleParenthesesOutput},
+		{"Should render parentheses expression (one level)", simpleParenthesesInput, simpleParenthesesOutput},
+		{"Should render multiple parentheses expression", multipleParenthesesInput, multipleParenthesesOutput},
 	}
 	for _, c := range cases {
 		got, err := OsloPolicy2Rego(c.input)
