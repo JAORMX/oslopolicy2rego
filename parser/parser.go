@@ -263,6 +263,7 @@ func (o parsedRego) renderParenthesesExpression(value string) (string, map[strin
 	outputValue := o.ParenthesesRegexp.ReplaceAllStringFunc(value, func(matchedValue string) string {
 		matchStart := 1
 		startSeparator := ""
+		endSeparator := ""
 		matchEnd := len(matchedValue) - 1
 		if matchedValue[0] == ' ' {
 			matchStart = 2
@@ -270,10 +271,11 @@ func (o parsedRego) renderParenthesesExpression(value string) (string, map[strin
 		}
 		if matchedValue[len(matchedValue)-1] == ' ' {
 			matchEnd = matchEnd - 1
+			endSeparator = " "
 		}
 		aliasName := randomAliasName("openstack_rule")
 		replacedExpressions[aliasName] = matchedValue[matchStart:matchEnd]
-		return startSeparator + "rule:" + aliasName
+		return startSeparator + "rule:" + aliasName + endSeparator
 	})
 	return outputValue, replacedExpressions, nil
 }
