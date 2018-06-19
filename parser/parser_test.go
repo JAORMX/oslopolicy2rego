@@ -278,6 +278,7 @@ default allow = false`
     foo
     bar
 }`}
+
 	cases := []struct {
 		description string
 		input       string

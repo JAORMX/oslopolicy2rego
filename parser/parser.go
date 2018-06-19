@@ -13,25 +13,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// This contains the actual list of rules
-type regoRules struct {
-	rules []string
-}
-
-// Wrapper struct to write the template
-type parsedRego struct {
-	Rules             regoRules
-	Tmpl              *template.Template
-	ParenthesesRegexp *regexp.Regexp
-}
-
-func (o regoRules) String() string {
-	return strings.Join(o.rules, "\n")
-}
-
-const parenthesesRegexpString = `(^|\s)\(.*?\)(\s|$)`
-
-const baseTemplate = `
+const policyHeader = `
 package openstack.policy
 
 import input.credentials as credentials
@@ -39,32 +21,101 @@ import input.action_name as action_name
 import input.target as target
 
 default allow = false
-{{.Rules}}`
+`
 
 const actionTemplate = `allow {
     action_name = "{{.Name}}"
-    {{.Rules}}
+    {{.Expression}}
 }`
 
 const aliasTemplate = `{{.Name}} {
-    {{.Rules}}
+    {{.Expression}}
 }`
 
-// Initialized the parsedRego object. This involves initializing the template
+type expression struct {
+	assertions []string
+}
+
+type regoRule struct {
+	RuleType   string
+	Name       string
+	Expression expression
+}
+
+// This contains the actual list of rules
+type regoRules []regoRule
+
+type tokenParserStateFunction func(string, bool, *osloParserState) (*regoRule, error)
+
+type osloParserState struct {
+	rulesStack    []regoRule
+	prefix        string
+	nextOperation tokenParserStateFunction
+}
+
+// Wrapper struct to write the template
+type osloParser struct {
+	Rules       regoRules
+	Tmpl        *template.Template
+	TokenRegexp *regexp.Regexp
+}
+
+func (e expression) String() string {
+	return strings.Join(e.assertions, "\n    ")
+}
+
+func (o osloParserState) Len() int {
+	return len(o.rulesStack)
+}
+
+func (o *osloParserState) addPrefix(prefix string) {
+	o.prefix = prefix
+}
+
+func (o *osloParserState) addAssertion(assertion string) {
+	lastIndex := len(o.rulesStack) - 1
+	assertions := o.rulesStack[lastIndex].Expression.assertions
+
+	prefix := ""
+	if o.prefix != "" {
+		prefix = o.prefix + " "
+	}
+
+	assertion = prefix + assertion
+	assertions = append(assertions, assertion)
+
+	o.rulesStack[lastIndex].Expression.assertions = assertions
+	o.prefix = ""
+}
+
+func (o *osloParserState) push(v regoRule) {
+	o.rulesStack = append(o.rulesStack, v)
+}
+
+func (o *osloParserState) pop() (regoRule, error) {
+	l := len(o.rulesStack)
+	if l == 0 {
+		return regoRule{}, errors.New("Can't pop from an empty stack")
+	}
+	rule := o.rulesStack[l-1]
+	o.rulesStack = o.rulesStack[:l-1]
+	return rule, nil
+}
+
+// Initialized the osloParser object. This involves initializing the template
 // objects in order to render the rego rules.
-func (o *parsedRego) Init() error {
-	tmpl, _ := template.New("OpenStackRegoBase").Parse(baseTemplate)
-	tmpl, _ = tmpl.New("Action").Parse(actionTemplate)
+func (o *osloParser) Init() error {
+	tmpl, _ := template.New("Action").Parse(actionTemplate)
 	tmpl, _ = tmpl.New("Alias").Parse(aliasTemplate)
 
 	o.Tmpl = tmpl
-	o.ParenthesesRegexp = regexp.MustCompile(parenthesesRegexpString)
+	o.TokenRegexp = regexp.MustCompile(`\S+`)
 	return nil
 }
 
 // renders the named rego segment related to the templateName. Currently we
-// only have three: OpenStackRegoBase, Action, Alias
-func (o parsedRego) renderTemplate(templateName string, outputStruct interface{}) string {
+// only have two: Action, Alias
+func (o osloParser) renderTemplate(templateName string, outputStruct interface{}) string {
 	var render bytes.Buffer
 
 	err := o.Tmpl.ExecuteTemplate(&render, templateName, outputStruct)
@@ -76,66 +127,124 @@ func (o parsedRego) renderTemplate(templateName string, outputStruct interface{}
 	return render.String()
 }
 
-// Returns a string for the given ParsedRego object. It should always give out
-// something from the default template. If it doesn't, it means an error
-// happened.
-func (o parsedRego) String() string {
-	return o.renderTemplate("OpenStackRegoBase", o)
+func (o osloParser) renderRuleEntry(rule regoRule) string {
+	return o.renderTemplate(rule.RuleType, rule)
 }
 
-// Renders "not" statements for any given rule
-func (o parsedRego) renderNotStatements(value string) ([]string, error) {
-	rules, _, err := o.renderRules(value)
-	if err != nil {
-		return nil, err
+func (o osloParser) String() string {
+	var outputPolicies []string
+	for _, rule := range o.Rules {
+		outputPolicies = append(outputPolicies, o.renderRuleEntry(rule))
 	}
-	modifiedRules := rules[:0]
-	for _, rule := range rules {
-		modifiedRules = append(modifiedRules, "not "+rule)
-	}
-	return modifiedRules, nil
+	return policyHeader + strings.Join(outputPolicies, "\n")
 }
 
-// Renders several assertions based on "and" statements for any given number of
-// rules
-func (o parsedRego) renderMultipleAssertionsWithAnd(value string) (string, error) {
-	var outputRules []string
-	unparsedRules := strings.Split(value, " and ")
-	for _, unparsedRule := range unparsedRules {
-		parsedRule, _, err := o.renderRules(unparsedRule)
-		if err != nil {
-			return "", err
+func (o *osloParser) parseExpression(baseRule regoRule, value interface{}) ([]regoRule, error) {
+	var outputRules []regoRule
+	switch typedValue := value.(type) {
+	case string:
+		if typedValue == "!" {
+			baseRule.Expression = createSimpleExpression("false")
+			outputRules = append(outputRules, baseRule)
+			return outputRules, nil
+		} else if typedValue == "" || typedValue == "@" {
+			baseRule.Expression = createSimpleExpression("true")
+			outputRules = append(outputRules, baseRule)
+			return outputRules, nil
+		}
+		tokens := o.TokenRegexp.FindAllString(typedValue, -1)
+		baseRule.Expression = expression{}
+		state := osloParserState{nextOperation: expectStart}
+		state.push(baseRule)
+
+		for _, token := range tokens {
+			outputRule, err := state.nextOperation(token, false, &state)
+			if err != nil {
+				return nil, err
+			}
+			if outputRule != nil {
+				outputRules = append(outputRules, *outputRule)
+			}
 		}
 
-		outputRules = append(outputRules, parsedRule...)
-	}
-	return strings.Join(outputRules, "\n    "), nil
-}
-
-// Renders several rules based on "or" statements based on any given number of
-// rules
-func (o parsedRego) renderMultipleRulesWithOr(value string) ([]string, error) {
-	var outputRules []string
-	unparsedRules := strings.Split(value, " or ")
-	for _, unparsedRule := range unparsedRules {
-		parsedRule, _, err := o.renderRules(unparsedRule)
+		outputRule, err := state.nextOperation("", true, &state)
 		if err != nil {
 			return nil, err
 		}
-
-		outputRules = append(outputRules, parsedRule...)
+		if outputRule != nil {
+			outputRules = append(outputRules, *outputRule)
+		}
+	case []interface{}:
+		if len(typedValue) == 0 {
+			baseRule.Expression = createSimpleExpression("true")
+			outputRules = append(outputRules, baseRule)
+			return outputRules, nil
+		} else {
+			return nil, errors.New("Can't give non-empty lists as values")
+		}
+	default:
+		errorMessage := fmt.Sprintf("The value %v is invalid", typedValue)
+		return nil, errors.New(errorMessage)
 	}
 	return outputRules, nil
 }
 
-func (o parsedRego) valueIsQuotedString(stringValue string) bool {
+// parseRules parses the rules from the given map and persists them on to the
+// Rules entry of the osloParser object.
+func (o *osloParser) parseRules(rules map[string]interface{}) error {
+	var rulesList []regoRule
+
+	for key, value := range rules {
+		ruleType := ""
+		if strings.Contains(key, ":") {
+			ruleType = "Action"
+		} else {
+			ruleType = "Alias"
+		}
+		rule := regoRule{RuleType: ruleType, Name: key}
+		rules, err := o.parseExpression(rule, value)
+		if err != nil {
+			errorMessage := fmt.Sprintf("Error in key %s: \"%v\"", key, err)
+			return errors.New(errorMessage)
+		}
+		rulesList = append(rulesList, rules...)
+	}
+
+	o.Rules = rulesList
+	return nil
+}
+
+// Returns a random alias name with the named prefix
+func randomAliasName(prefix string) string {
+	return fmt.Sprintf("%s_%d", prefix, rand.Int())
+}
+
+func createSimpleExpression(value string) expression {
+	simpleExpression := expression{}
+	simpleExpression.assertions = append(simpleExpression.assertions, value)
+	return simpleExpression
+}
+
+func createSubRule() regoRule {
+	subRule := regoRule{RuleType: "Alias", Name: randomAliasName("openstack_rule")}
+	subRule.Expression = expression{}
+	return subRule
+}
+
+func newRule(baseRule regoRule) regoRule {
+	rule := regoRule{RuleType: baseRule.RuleType, Name: baseRule.Name}
+	rule.Expression = expression{}
+	return rule
+}
+
+func valueIsQuotedString(stringValue string) bool {
 	if stringValue[0] == '\'' && stringValue[len(stringValue)-1] == '\'' {
 		return true
 	}
 	return false
 }
 
-func (o parsedRego) valueIsNumber(stringValue string) bool {
+func valueIsNumber(stringValue string) bool {
 	_, err := strconv.ParseInt(stringValue, 0, 64)
 	if err != nil {
 		return false
@@ -143,7 +252,7 @@ func (o parsedRego) valueIsNumber(stringValue string) bool {
 	return true
 }
 
-func (o parsedRego) valueIsBoolean(stringValue string) bool {
+func valueIsBoolean(stringValue string) bool {
 	if stringValue == "True" || stringValue == "False" {
 		return true
 	}
@@ -153,7 +262,7 @@ func (o parsedRego) valueIsBoolean(stringValue string) bool {
 // Renders the comparison between two values. If they haven't matched a type,
 // they are assumed to come from the credentials, so we render it as such. If
 // they matched a type we render the value as was given.
-func (o parsedRego) renderComparison(leftValue string, leftMatched bool,
+func renderComparison(leftValue string, leftMatched bool,
 	rightValue string, rightMatched bool) string {
 	if leftMatched && rightMatched {
 		return leftValue + " = " + rightValue
@@ -170,12 +279,12 @@ func (o parsedRego) renderComparison(leftValue string, leftMatched bool,
 // value as the result. If the value didn't match any of the types boolean,
 // string or number, the second boolean output will be set to false, indicating
 // that no match was found.
-func (o parsedRego) renderConstantForComparison(value string) (string, bool) {
-	if o.valueIsBoolean(value) {
+func renderConstantForComparison(value string) (string, bool) {
+	if valueIsBoolean(value) {
 		return strings.ToLower(value), true
-	} else if o.valueIsNumber(value) {
+	} else if valueIsNumber(value) {
 		return value, true
-	} else if o.valueIsQuotedString(value) {
+	} else if valueIsQuotedString(value) {
 		return "\"" + value[1:len(value)-1] + "\"", true
 	}
 
@@ -188,7 +297,7 @@ func (o parsedRego) renderConstantForComparison(value string) (string, bool) {
 // * comparing a value coming from the credentials with a value coming from the
 //   target
 // * Constant value comparison
-func (o parsedRego) parseComparison(value string) (string, error) {
+func parseComparison(value string) (string, error) {
 	comparedValues := strings.SplitN(value, ":", 2)
 
 	if comparedValues[0] == "" {
@@ -204,7 +313,7 @@ func (o parsedRego) parseComparison(value string) (string, error) {
 		// Pass in role comparison, which will be rendered being gotten from
 		// the credentials. When none of the cases match it renders the right
 		// value as a quoted string, which is what we want in this case.
-		return o.renderComparison("roles[_]", false, comparedValues[1], false), nil
+		return renderComparison("roles[_]", false, comparedValues[1], false), nil
 	} else if strings.HasPrefix(comparedValues[1], "%(") {
 		targetValue := ""
 		if strings.HasSuffix(comparedValues[1], ")s") {
@@ -213,206 +322,114 @@ func (o parsedRego) parseComparison(value string) (string, error) {
 			errorMessage := fmt.Sprintf("Unmatched parentheses in value %v", value)
 			return "", errors.New(errorMessage)
 		}
-		leftValue, leftMatched := o.renderConstantForComparison(comparedValues[0])
-		return o.renderComparison(leftValue, leftMatched, targetValue, true), nil
+		leftValue, leftMatched := renderConstantForComparison(comparedValues[0])
+		return renderComparison(leftValue, leftMatched, targetValue, true), nil
 	}
 
-	leftValue, leftMatched := o.renderConstantForComparison(comparedValues[0])
-	rightValue, rightMatched := o.renderConstantForComparison(comparedValues[1])
-	return o.renderComparison(leftValue, leftMatched, rightValue, rightMatched), nil
+	leftValue, leftMatched := renderConstantForComparison(comparedValues[0])
+	rightValue, rightMatched := renderConstantForComparison(comparedValues[1])
+	return renderComparison(leftValue, leftMatched, rightValue, rightMatched), nil
 }
 
-// Checks if the given value contains a parentheses expression
-func (o parsedRego) containsParenthesesExpression(value string) bool {
-	parenthesisIndex := strings.Index(value, "(")
-	if parenthesisIndex == -1 {
-		return false
-	}
-	if parenthesisIndex == 0 {
-		return true
-	}
-	if value[parenthesisIndex-1] == ' ' || value[parenthesisIndex-1] == '\t' {
-		return true
-	}
-	return o.containsParenthesesExpression(value[parenthesisIndex+1:])
-}
-
-// Returns a random alias name with the named prefix
-func randomAliasName(prefix string) string {
-	return fmt.Sprintf("%s_%d", prefix, rand.Int())
-}
-
-// renders a parentheses expression, which is done by creating a new rule in
-// rego that will be refrenced by a random name. This returns the new
-// expression that still needs to be evaluated, a key to reference the new rule
-// with, and a string containing the sub-expression whithin the parentheses.
-func (o parsedRego) renderParenthesesExpression(value string) (string, map[string]string, error) {
-	if strings.Count(value, "(") != strings.Count(value, ")") {
-		errorMessage := fmt.Sprintf("Unmatched parentheses in value %v", value)
-		return "", nil, errors.New(errorMessage)
-	}
-
-	parenthesisStartIndex := strings.Index(value, "(")
-	parenthesisEndIndex := strings.Index(value, "(")
-
-	if parenthesisStartIndex+1 == parenthesisEndIndex {
-		return "", nil, errors.New("Empty parentheses expression given \"()\"")
-	}
-
-	replacedExpressions := make(map[string]string)
-	outputValue := o.ParenthesesRegexp.ReplaceAllStringFunc(value, func(matchedValue string) string {
-		matchStart := 1
-		startSeparator := ""
-		endSeparator := ""
-		matchEnd := len(matchedValue) - 1
-		if matchedValue[0] == ' ' {
-			matchStart = 2
-			startSeparator = " "
+func expectStart(token string, end bool, state *osloParserState) (*regoRule, error) {
+	if end {
+		return nil, errors.New("Unexpected end of expression.")
+	} else if token[0] == '(' {
+		subRule := createSubRule()
+		state.addAssertion(subRule.Name)
+		state.push(subRule)
+		return expectStart(token[1:], false, state)
+	} else if token[len(token)-1] == ')' {
+		currentRule, err := state.pop()
+		// We can't advance if we're in the base rule, it has to be a sub rule
+		if err != nil || state.Len() == 0 {
+			return nil, errors.New("Unexpected closing parenthesis.")
 		}
-		if matchedValue[len(matchedValue)-1] == ' ' {
-			matchEnd = matchEnd - 1
-			endSeparator = " "
-		}
-		aliasName := randomAliasName("openstack_rule")
-		replacedExpressions[aliasName] = matchedValue[matchStart:matchEnd]
-		return startSeparator + "rule:" + aliasName + endSeparator
-	})
-	return outputValue, replacedExpressions, nil
-}
-
-// Actual parsing function that handles the different cases from oslo.policy.
-// It'll parse both simple (rules, roles, statements, constants and
-// comparisons), as well as composed statements (ands, ors parentheses). This
-// will return a list of strings with the parsed rules, and a map of strings
-// with extra sub-expressions that are gotten from parentheses expressions;
-// which should be rendered separately
-func (o parsedRego) renderRules(value interface{}) ([]string, map[string]string, error) {
-	var outputRules []string
-	var extraSubexpressions map[string]string
-	switch typedValue := value.(type) {
-	case string:
-		if o.containsParenthesesExpression(typedValue) {
-			var err error
-			typedValue, extraSubexpressions, err = o.renderParenthesesExpression(typedValue)
-
-			if err != nil {
-				return nil, nil, err
-			}
-		}
-
-		if strings.Contains(typedValue, " and ") {
-			assertions, err := o.renderMultipleAssertionsWithAnd(typedValue)
-			if err != nil {
-				return nil, nil, err
-			}
-			outputRules = append(outputRules, assertions)
-		} else if strings.Contains(typedValue, " or ") {
-			rules, err := o.renderMultipleRulesWithOr(typedValue)
-			if err != nil {
-				return nil, nil, err
-			}
-			outputRules = append(outputRules, rules...)
-		} else if strings.HasPrefix(typedValue, "not ") {
-			rules, err := o.renderNotStatements(typedValue[4:])
-			if err != nil {
-				return nil, nil, err
-			}
-			outputRules = append(outputRules, rules...)
-		} else if strings.Contains(typedValue, ":") {
-			rule, err := o.parseComparison(typedValue)
-			if err != nil {
-				return nil, nil, err
-			}
-			outputRules = append(outputRules, rule)
-		} else if typedValue == "!" {
-			outputRules = append(outputRules, "false")
-		} else if typedValue == "" || typedValue == "@" {
-			outputRules = append(outputRules, "true")
-		} else {
-			errorMessage := fmt.Sprintf("The value %v is invalid", typedValue)
-			return nil, nil, errors.New(errorMessage)
-		}
-	case []interface{}:
-		if len(typedValue) == 0 {
-			outputRules = append(outputRules, "true")
-		} else {
-			return nil, nil, errors.New("Can't give non-empty lists as values")
-		}
-	default:
-		errorMessage := fmt.Sprintf("The value %v is invalid", typedValue)
-		return nil, nil, errors.New(errorMessage)
-	}
-	return outputRules, extraSubexpressions, nil
-}
-
-func (o parsedRego) renderEntry(entryType, key string, rules interface{}) (string, error) {
-	var output string
-	renderedRules, extraSubexpressions, err := o.renderRules(rules)
-	if err != nil {
-		return "", err
-	}
-
-	for _, rule := range renderedRules {
-		entry := struct {
-			Name  string
-			Rules string
-		}{
-			key,
-			rule,
-		}
-		output = output + "\n" + o.renderTemplate(entryType, entry)
-	}
-
-	for subexpressionKey, subexpressionValue := range extraSubexpressions {
-		entry, err := o.renderEntry("Alias", subexpressionKey, subexpressionValue)
+		state.push(currentRule)
+		_, err = expectStart(token[:len(token)-1], false, state)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
-		output = output + entry
-	}
-	return output, nil
-}
-
-// parseRules parses the rules from the given map and persists them on to the
-// Rules entry of the parsedRego object.
-func (o *parsedRego) parseRules(rules map[string]interface{}) error {
-	var rulesList []string
-
-	for key, value := range rules {
-		entryType := ""
-		if strings.Contains(key, ":") {
-			entryType = "Action"
-		} else {
-			entryType = "Alias"
-		}
-
-		entry, err := o.renderEntry(entryType, key, value)
+		currentRule, err = state.pop()
+		state.nextOperation = expectEndOrOperator
+		return &currentRule, err
+	} else if token == "not" {
+		state.addPrefix("not")
+		state.nextOperation = expectNextToken
+		return nil, nil
+	} else if strings.Contains(token, ":") {
+		assertion, err := parseComparison(token)
 		if err != nil {
-			return err
+			return nil, err
 		}
-
-		rulesList = append(rulesList, entry)
+		state.addAssertion(assertion)
+		state.nextOperation = expectEndOrOperator
+		return nil, nil
 	}
-
-	o.Rules = regoRules{rulesList}
-	return nil
+	errorMessage := fmt.Sprintf("Unexpected token: %v", token)
+	return nil, errors.New(errorMessage)
 }
 
-// OsloPolicy2Rego takes a yaml or JSON string containing oslo.policy rules and
-// converts them into Rego language.
-func OsloPolicy2Rego(input string) (string, error) {
-	rules, err := parseYamlOrJSON(input)
-	if err != nil {
-		return "", err
+func expectNextToken(token string, end bool, state *osloParserState) (*regoRule, error) {
+	if end {
+		return nil, errors.New("Unexpected end of expression.")
+	} else if token[0] == '(' {
+		subRule := createSubRule()
+		state.addAssertion(subRule.Name)
+		state.push(subRule)
+		return expectStart(token[1:], false, state)
+	} else if token[len(token)-1] == ')' {
+		currentRule, err := state.pop()
+		// We can't advance if we're in the base rule, it has to be a sub rule
+		if err != nil || state.Len() == 0 {
+			return nil, errors.New("Unexpected closing parenthesis.")
+		}
+		state.push(currentRule)
+		_, err = expectStart(token[:len(token)-1], false, state)
+		if err != nil {
+			return nil, err
+		}
+		currentRule, err = state.pop()
+		state.nextOperation = expectEndOrOperator
+		return &currentRule, err
+	} else if strings.Contains(token, ":") {
+		assertion, err := parseComparison(token)
+		if err != nil {
+			return nil, err
+		}
+		state.addAssertion(assertion)
+		state.nextOperation = expectEndOrOperator
+		return nil, err
 	}
+	errorMessage := fmt.Sprintf("Unexpected token: %v", token)
+	return nil, errors.New(errorMessage)
+}
 
-	parsedRules := parsedRego{}
-	parsedRules.Init()
-	err = parsedRules.parseRules(rules)
-	if err != nil {
-		return "", err
+func expectEndOrOperator(token string, end bool, state *osloParserState) (*regoRule, error) {
+	if end {
+		rule, err := state.pop()
+		if err != nil {
+			return nil, err
+		}
+		if state.Len() != 0 {
+			return nil, errors.New("Unclosed subexpression")
+		}
+		return &rule, nil
+	} else if token == "and" {
+		state.nextOperation = expectStart
+		return nil, nil
+	} else if token == "or" {
+		currentRule, err := state.pop()
+		if err != nil {
+			return nil, err
+		}
+		rule := newRule(currentRule)
+		state.push(rule)
+		state.nextOperation = expectStart
+		return &currentRule, nil
 	}
-	return parsedRules.String(), nil
+	errorMessage := fmt.Sprintf("Unexpected token: %v", token)
+	return nil, errors.New(errorMessage)
 }
 
 // parseYamlOrJSON takes a given string and parses it into a string map of
@@ -424,4 +441,21 @@ func parseYamlOrJSON(input string) (map[string]interface{}, error) {
 		return nil, err
 	}
 	return output, nil
+}
+
+// OsloPolicy2Rego takes a yaml or JSON string containing oslo.policy rules and
+// converts them into Rego language.
+func OsloPolicy2Rego(input string) (string, error) {
+	rules, err := parseYamlOrJSON(input)
+	if err != nil {
+		return "", err
+	}
+
+	op := osloParser{}
+	op.Init()
+	err = op.parseRules(rules)
+	if err != nil {
+		return "", err
+	}
+	return op.String(), nil
 }

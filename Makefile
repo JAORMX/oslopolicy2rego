@@ -38,7 +38,7 @@ install: generate
 	$(GO) install
 
 test: generate
-	$(GO) test $(PACKAGES) -count 10
+	$(GO) test $(PACKAGES) -count 1000
 
 cover: generate
 	@mkdir -p coverage/$(shell dirname $@)
