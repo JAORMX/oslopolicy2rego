@@ -279,6 +279,35 @@ default allow = false`
     bar
 }`}
 
+	nestedParenthesesInput1 := `
+{
+	"secrets:get": "(rule:creator and rule:reader) or not ((rule:foo and rule:bar))"
+}
+`
+
+	nestedParenthesesOutput1 := []string{`allow {
+    action_name = "secrets:get"
+    openstack_rule`, ` {
+    creator
+    reader
+}`, ` {
+    foo
+    bar
+}`}
+
+	nestedParenthesesInput2 := `
+{
+	"secrets:get": "((rule:foo and rule:bar))"
+}
+`
+
+	nestedParenthesesOutput2 := []string{`allow {
+    action_name = "secrets:get"
+    openstack_rule`, ` {
+    foo
+    bar
+}`}
+
 	cases := []struct {
 		description string
 		input       string
@@ -305,6 +334,8 @@ default allow = false`
 		{"Should render comparison between constant and target", constantTargetComparisonInput, constantTargetComparisonOutput},
 		{"Should render parentheses expression (one level)", simpleParenthesesInput, simpleParenthesesOutput},
 		{"Should render multiple parentheses expression", multipleParenthesesInput, multipleParenthesesOutput},
+		{"Should render nested parentheses expression #1", nestedParenthesesInput1, nestedParenthesesOutput1},
+		{"Should render nested parentheses expression #2", nestedParenthesesInput2, nestedParenthesesOutput2},
 	}
 	for _, c := range cases {
 		got, err := OsloPolicy2Rego(c.input)

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
-	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
@@ -55,9 +54,8 @@ type osloParserState struct {
 
 // Wrapper struct to write the template
 type osloParser struct {
-	Rules       regoRules
-	Tmpl        *template.Template
-	TokenRegexp *regexp.Regexp
+	Rules regoRules
+	Tmpl  *template.Template
 }
 
 func (e expression) String() string {
@@ -109,7 +107,6 @@ func (o *osloParser) Init() error {
 	tmpl, _ = tmpl.New("Alias").Parse(aliasTemplate)
 
 	o.Tmpl = tmpl
-	o.TokenRegexp = regexp.MustCompile(`\S+`)
 	return nil
 }
 
@@ -152,12 +149,13 @@ func (o *osloParser) parseExpression(baseRule regoRule, value interface{}) ([]re
 			outputRules = append(outputRules, baseRule)
 			return outputRules, nil
 		}
-		tokens := o.TokenRegexp.FindAllString(typedValue, -1)
 		baseRule.Expression = expression{}
 		state := osloParserState{nextOperation: expectStart}
 		state.push(baseRule)
+		token := ""
+		token, typedValue = tokenize(typedValue)
 
-		for _, token := range tokens {
+		for token != "" {
 			outputRule, err := state.nextOperation(token, false, &state)
 			if err != nil {
 				return nil, err
@@ -165,6 +163,7 @@ func (o *osloParser) parseExpression(baseRule regoRule, value interface{}) ([]re
 			if outputRule != nil {
 				outputRules = append(outputRules, *outputRule)
 			}
+			token, typedValue = tokenize(typedValue)
 		}
 
 		outputRule, err := state.nextOperation("", true, &state)
@@ -334,23 +333,17 @@ func parseComparison(value string) (string, error) {
 func expectStart(token string, end bool, state *osloParserState) (*regoRule, error) {
 	if end {
 		return nil, errors.New("Unexpected end of expression.")
-	} else if token[0] == '(' {
+	} else if token == "(" {
 		subRule := createSubRule()
 		state.addAssertion(subRule.Name)
 		state.push(subRule)
-		return expectStart(token[1:], false, state)
-	} else if token[len(token)-1] == ')' {
+		return nil, nil
+	} else if token == ")" {
 		currentRule, err := state.pop()
 		// We can't advance if we're in the base rule, it has to be a sub rule
 		if err != nil || state.Len() == 0 {
 			return nil, errors.New("Unexpected closing parenthesis.")
 		}
-		state.push(currentRule)
-		_, err = expectStart(token[:len(token)-1], false, state)
-		if err != nil {
-			return nil, err
-		}
-		currentRule, err = state.pop()
 		state.nextOperation = expectEndOrOperator
 		return &currentRule, err
 	} else if token == "not" {
@@ -373,23 +366,17 @@ func expectStart(token string, end bool, state *osloParserState) (*regoRule, err
 func expectNextToken(token string, end bool, state *osloParserState) (*regoRule, error) {
 	if end {
 		return nil, errors.New("Unexpected end of expression.")
-	} else if token[0] == '(' {
+	} else if token == "(" {
 		subRule := createSubRule()
 		state.addAssertion(subRule.Name)
 		state.push(subRule)
-		return expectStart(token[1:], false, state)
-	} else if token[len(token)-1] == ')' {
+		return nil, nil
+	} else if token == ")" {
 		currentRule, err := state.pop()
 		// We can't advance if we're in the base rule, it has to be a sub rule
 		if err != nil || state.Len() == 0 {
 			return nil, errors.New("Unexpected closing parenthesis.")
 		}
-		state.push(currentRule)
-		_, err = expectStart(token[:len(token)-1], false, state)
-		if err != nil {
-			return nil, err
-		}
-		currentRule, err = state.pop()
 		state.nextOperation = expectEndOrOperator
 		return &currentRule, err
 	} else if strings.Contains(token, ":") {
@@ -399,7 +386,7 @@ func expectNextToken(token string, end bool, state *osloParserState) (*regoRule,
 		}
 		state.addAssertion(assertion)
 		state.nextOperation = expectEndOrOperator
-		return nil, err
+		return nil, nil
 	}
 	errorMessage := fmt.Sprintf("Unexpected token: %v", token)
 	return nil, errors.New(errorMessage)
@@ -415,6 +402,13 @@ func expectEndOrOperator(token string, end bool, state *osloParserState) (*regoR
 			return nil, errors.New("Unclosed subexpression")
 		}
 		return &rule, nil
+	} else if token == ")" {
+		currentRule, err := state.pop()
+		// We can't advance if we're in the base rule, it has to be a sub rule
+		if err != nil || state.Len() == 0 {
+			return nil, errors.New("Unexpected closing parenthesis.")
+		}
+		return &currentRule, err
 	} else if token == "and" {
 		state.nextOperation = expectStart
 		return nil, nil
@@ -430,6 +424,77 @@ func expectEndOrOperator(token string, end bool, state *osloParserState) (*regoR
 	}
 	errorMessage := fmt.Sprintf("Unexpected token: %v", token)
 	return nil, errors.New(errorMessage)
+}
+
+func runeIsWhitespace(r rune) bool {
+	return r == ' ' || r == '\t'
+}
+
+func tokenize(value string) (string, string) {
+	var parsedIndex int
+	var whitespaceOffset int
+	var prevChar rune
+	var parsingToken bool
+
+	for index, char := range value {
+		// If we'ere not parsing a token we return the start parenthesis as a
+		// token
+		if char == '(' && !parsingToken {
+			unparsedStart := index + 1
+			return "(", value[unparsedStart:]
+		}
+		if runeIsWhitespace(char) {
+			// If we're parsing a token, a whitespace is a token delimiter.
+			if parsingToken && prevChar == ')' {
+				// If the previous character was a closing parenthesis, and we
+				// encounter a whitespace delimiter, return the token we were
+				// parsing, and start the next parsing at the end parenthesis
+				parsedEnd := index - 1
+				unparsedStart := index - 1
+				return value[:parsedEnd], value[unparsedStart:]
+			} else if parsingToken {
+				parsedEnd := index
+				unparsedStart := index + 1
+				return value[whitespaceOffset:parsedEnd], value[unparsedStart:]
+			} else {
+				// ignore whitespaces otherwise
+				parsedIndex = index
+				prevChar = char
+				whitespaceOffset = whitespaceOffset + 1
+				continue
+			}
+		}
+		if char == ')' && prevChar == ')' {
+			if parsingToken {
+				parsedEnd := index - 1
+				unparsedStart := index - 1
+				return value[:parsedEnd], value[unparsedStart:]
+			} else {
+				parsedEnd := index
+				unparsedStart := index - 1
+				return value[:parsedEnd], value[unparsedStart:]
+			}
+		}
+		if char == ')' && !parsingToken {
+			unparsedStart := index + 1
+			return ")", value[unparsedStart:]
+		}
+		parsedIndex = index
+		parsingToken = true
+		prevChar = char
+	}
+	if prevChar == ')' {
+		// If the previous character was a closing parenthesis, and we
+		// encounter the end, return the token we were
+		// parsing, and start the next parsing at the end parenthesis
+		parsedEnd := parsedIndex
+		return value[:parsedEnd], value[parsedEnd:]
+	}
+	if len(value) > 0 {
+		parsedEnd := parsedIndex + 1
+		return value[:parsedEnd], value[parsedEnd:]
+	}
+	return "", ""
 }
 
 // parseYamlOrJSON takes a given string and parses it into a string map of

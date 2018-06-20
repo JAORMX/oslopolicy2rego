@@ -9,7 +9,7 @@ import (
 func main() {
 	sampleInput := `
 {
-"secrets:get": "((rule:creator and rule:reader))"
+	"secrets:get": "False:%(target.secret.project_id)s or (rule:creator and rule:reader)"
 }
 `
 	output, err := o2r.OsloPolicy2Rego(sampleInput)
