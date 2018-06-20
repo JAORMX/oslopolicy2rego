@@ -50,6 +50,17 @@ allow {
 }
 ```
 
+There is also a simple CLI option that gets built when you build this project.
+It takes two paremeters:
+
+* input: The oslo.policy file that you want to parse.
+* output: The file that you want to store the result in. (defaults to stdout)
+
+You could call it as follows:
+```
+ ./oslopolicy2rego_linux_amd64 --input ~/barbican-policy.yaml --output myfile.rego
+```
+
 Dependencies
 ------------
 
