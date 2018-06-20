@@ -66,24 +66,6 @@ Dependencies
 
 - **gopkg.in/yaml.v2**: https://gopkg.in/yaml.v2
 
-What works
-----------
-
-It accepts true values (empty lists, empty string and "@"), and always negative
-values ("!").
-
-It reads a role ("role:admin") and also rule references ("rule:admin"), as well
-as handle the rule negations ("not" statement).
-
-"and" and "or" expressions are accepted.
-
-Also expressions with parentheses are handled.
-
-TODO
-----
-
-* parentheses implementation is incomplete (It doesn't handle parentheses
-  within parentheses).
 
 [1] https://docs.openstack.org/oslo.policy/latest/index.html
 
