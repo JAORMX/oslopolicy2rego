@@ -24,7 +24,7 @@ func main() {
 	"secrets:get": "rule:admin"
 }
 `
-	output, _ := o2r.OsloPolicy2Rego(sampleInput)
+	output, _ := o2r.OsloPolicy2Rego("openstack.policy", sampleInput)
 	fmt.Println(output)
 }
 ```
@@ -51,10 +51,15 @@ allow {
 ```
 
 There is also a simple CLI option that gets built when you build this project.
-It takes two paremeters:
+It takes three paremeters:
 
 * input: The oslo.policy file that you want to parse.
-* output: The file that you want to store the result in. (defaults to stdout)
+
+* (optional) output: The file that you want to store the result in. (defaults
+  to stdout)
+
+* (optional) package-name: The name of the package to be used in the rego file.
+  (defaults to "openstack.policy")
 
 You could call it as follows:
 ```

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
@@ -12,8 +13,8 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-const policyHeader = `
-package openstack.policy
+const policyHeaderTemplate = `
+package {{.Package}}
 
 import input.credentials as credentials
 import input.action_name as action_name
@@ -54,8 +55,9 @@ type osloParserState struct {
 
 // Wrapper struct to write the template
 type osloParser struct {
-	Rules regoRules
-	Tmpl  *template.Template
+	Package string
+	Rules   regoRules
+	Tmpl    *template.Template
 }
 
 func (e expression) String() string {
@@ -103,7 +105,8 @@ func (o *osloParserState) pop() (regoRule, error) {
 // Initialized the osloParser object. This involves initializing the template
 // objects in order to render the rego rules.
 func (o *osloParser) Init() error {
-	tmpl, _ := template.New("Action").Parse(actionTemplate)
+	tmpl, _ := template.New("Header").Parse(policyHeaderTemplate)
+	tmpl, _ = tmpl.New("Action").Parse(actionTemplate)
 	tmpl, _ = tmpl.New("Alias").Parse(aliasTemplate)
 
 	o.Tmpl = tmpl
@@ -133,7 +136,7 @@ func (o osloParser) String() string {
 	for _, rule := range o.Rules {
 		outputPolicies = append(outputPolicies, o.renderRuleEntry(rule))
 	}
-	return policyHeader + strings.Join(outputPolicies, "\n")
+	return o.renderTemplate("Header", o) + strings.Join(outputPolicies, "\n")
 }
 
 func (o *osloParser) parseExpression(baseRule regoRule, value interface{}) ([]regoRule, error) {
@@ -508,15 +511,45 @@ func parseYamlOrJSON(input string) (map[string]interface{}, error) {
 	return output, nil
 }
 
+// validatePackageName takes a package name and verifies that it is indeed a
+// string with characters or digits, separated by dots. e.g. "openstack.policy"
+func validatePackageName(packageName string) bool {
+	re := regexp.MustCompile(`[a-zA-Z1-9]+(\.[a-zA-Z1-9]+)*`)
+	matchedString := re.FindString(packageName)
+	if packageName == matchedString {
+		return true
+	}
+	return false
+}
+
 // OsloPolicy2Rego takes a yaml or JSON string containing oslo.policy rules and
 // converts them into Rego language.
-func OsloPolicy2Rego(input string) (string, error) {
+//
+// It takes the packageName as the first argument, which should be a string
+// that consists of ascii letters and numbers, with periods. This will
+// represent the name of the package in OPA, and will be persisted to the URL
+// that will be used for doing queries.
+//
+//     For example, if you pass "openstack.policy" as a packageName, the
+//     resulting package name will be "openstack.policy". Subsequently you'll
+//     be able to query: http://<OPA URL>/v1/data/openstack/policy/allow
+//
+func OsloPolicy2Rego(packageName, input string) (string, error) {
+	packageNameWorks := validatePackageName(packageName)
+
+	if !packageNameWorks {
+		errorMessage := fmt.Sprintf("The package name %s is invalid. "+
+			"It must consist of strings of letters and digits separated by "+
+			"dots ('.'). e.g. 'openstack.policy'", packageName)
+		return "", errors.New(errorMessage)
+	}
+
 	rules, err := parseYamlOrJSON(input)
 	if err != nil {
 		return "", err
 	}
 
-	op := osloParser{}
+	op := osloParser{Package: packageName}
 	op.Init()
 	err = op.parseRules(rules)
 	if err != nil {

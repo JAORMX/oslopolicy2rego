@@ -13,6 +13,8 @@ import (
 func main() {
 	var outputStream io.Writer
 
+	packageName := flag.String("package-name", "openstack.policy",
+		"package name to use for the rego policy.")
 	inputFile := flag.String("input", "", "Path to input oslo.policy file.")
 	outputFile := flag.String("output", "", "Path to input oslo.policy file.")
 
@@ -37,7 +39,7 @@ func main() {
 			panic(err)
 		}
 	}
-	outputString, err := o2r.OsloPolicy2Rego(inputString)
+	outputString, err := o2r.OsloPolicy2Rego(*packageName, inputString)
 	if err != nil {
 		panic(err)
 	}

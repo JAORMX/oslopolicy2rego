@@ -75,6 +75,27 @@ func TestParseYamlOrJSONParsesSimpleJSONCases(t *testing.T) {
 	}
 }
 
+func TestValidatePackageName(t *testing.T) {
+	cases := []struct {
+		input string
+		want  bool
+	}{
+		{"policy", true},
+		{"openstack.policy", true},
+		{"keystone.policy", true},
+		{"key.manager.policy", true},
+		{"bad/package", false},
+		{".policy", false},
+	}
+	for _, c := range cases {
+		got := validatePackageName(c.input)
+		if got != c.want {
+			t.Errorf("validatePackageName() with input: %s\nDidn't match %v\nInstead got: %v",
+				c.input, c.want, got)
+		}
+	}
+}
+
 // OsloPolicy2Rego tests
 
 func TestOsloPolicy2RegoSuccesses(t *testing.T) {
@@ -338,7 +359,7 @@ default allow = false`
 		{"Should render nested parentheses expression #2", nestedParenthesesInput2, nestedParenthesesOutput2},
 	}
 	for _, c := range cases {
-		got, err := OsloPolicy2Rego(c.input)
+		got, err := OsloPolicy2Rego("openstack.policy", c.input)
 		if err != nil {
 			t.Errorf("OsloPolicy2Rego() test case \"%s\" with input:\n %s\n\nFailed with:\n%v",
 				c.description, c.input, err)
@@ -463,7 +484,7 @@ func TestOsloPolicy2RegoErrors(t *testing.T) {
 		{"Empty parentheses should fail", emptyParenthesesInput},
 	}
 	for _, c := range cases {
-		got, err := OsloPolicy2Rego(c.input)
+		got, err := OsloPolicy2Rego("openstack.policy", c.input)
 		if err == nil {
 			t.Errorf("OsloPolicy2Rego() should have returned an error for:\n %s\n Instead got: %v", c.input, got)
 		}
