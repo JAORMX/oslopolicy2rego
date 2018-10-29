@@ -103,7 +103,7 @@ func TestOsloPolicy2RegoSuccesses(t *testing.T) {
 package openstack.policy
 
 import input.credentials as credentials
-import input.action_name as action_name
+import input.rule as rule
 import input.target as target
 
 default allow = false`
@@ -116,7 +116,7 @@ default allow = false`
 	oneRuleOneActionOutput := []string{`admin {
     credentials.roles[_] = "admin"
 }`, `allow {
-    action_name = "secrets:get"
+    rule = "secrets:get"
     admin
 }`}
 
@@ -125,7 +125,7 @@ default allow = false`
 	"secrets:get": "!"
 }`
 	alwaysFalseOutput := []string{`allow {
-    action_name = "secrets:get"
+    rule = "secrets:get"
     false
 }`}
 
@@ -135,7 +135,7 @@ default allow = false`
 }
 `
 	notStatementOutput := []string{`allow {
-    action_name = "secrets:get"
+    rule = "secrets:get"
     not admin
 }`}
 
@@ -144,7 +144,7 @@ default allow = false`
 	"secrets:get": ""
 }`
 	alwaysTrue := []string{`allow {
-    action_name = "secrets:get"
+    rule = "secrets:get"
     true
 }`}
 
@@ -165,7 +165,7 @@ default allow = false`
 `
 
 	multipleAssertionsWithAndOutput := []string{`allow {
-    action_name = "secrets:get"
+    rule = "secrets:get"
     admin
     creator
     reader
@@ -179,13 +179,13 @@ default allow = false`
 `
 
 	multipleRulesWithOrOutput := []string{`allow {
-    action_name = "secrets:get"
+    rule = "secrets:get"
     admin
 }`, `allow {
-    action_name = "secrets:get"
+    rule = "secrets:get"
     creator
 }`, `allow {
-    action_name = "secrets:get"
+    rule = "secrets:get"
     reader
 }`}
 
@@ -278,7 +278,7 @@ default allow = false`
 `
 
 	simpleParenthesesOutput := []string{`allow {
-    action_name = "secrets:get"
+    rule = "secrets:get"
     false = target.target.secret.project_id`, ` {
     creator
     reader
@@ -291,7 +291,7 @@ default allow = false`
 `
 
 	multipleParenthesesOutput := []string{`allow {
-    action_name = "secrets:get"
+    rule = "secrets:get"
     admin`, ` {
     creator
     reader
@@ -307,7 +307,7 @@ default allow = false`
 `
 
 	nestedParenthesesOutput1 := []string{`allow {
-    action_name = "secrets:get"
+    rule = "secrets:get"
     openstack_rule`, ` {
     creator
     reader
@@ -323,7 +323,7 @@ default allow = false`
 `
 
 	nestedParenthesesOutput2 := []string{`allow {
-    action_name = "secrets:get"
+    rule = "secrets:get"
     openstack_rule`, ` {
     foo
     bar

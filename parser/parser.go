@@ -17,14 +17,14 @@ const policyHeaderTemplate = `
 package {{.Package}}
 
 import input.credentials as credentials
-import input.action_name as action_name
+import input.rule as rule
 import input.target as target
 
 default allow = false
 `
 
 const actionTemplate = `allow {
-    action_name = "{{.Name}}"
+    rule = "{{.Name}}"
     {{.Expression}}
 }`
 
