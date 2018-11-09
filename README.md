@@ -1,7 +1,7 @@
 oslopolicy2rego: Oslo policy to rego
 ====================================
 
-Is a small library (and eventually a CLI) that serves the sole purpose of
+Is a small library and a CLI utility that serves the sole purpose of
 converting oslo.policy[1] json or yaml files into Open-Policy-Agent rego
 language [2].
 
